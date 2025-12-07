@@ -105,6 +105,18 @@ namespace Warudo.Core.ModUtils
         }
 
         /// <summary>
+        /// </summary>
+        public bool HasCommand<TArgs>(Entity entity, string commandName) where TArgs : class, new()
+        {
+            if(entity == null)
+                return false;
+            if (!entityCommands.TryGetValue(entity, out var commands))
+                return false;
+            var argsSignature = GetEventSignature(typeof(TArgs));
+            return commands.Any(c => c.CommandName == commandName && c.ArgsSignature == argsSignature);
+        }
+
+        /// <summary>
         /// 执行命令
         /// </summary>
         public CommandResult<TResult> ExecuteCommand<TArgs, TResult>(Entity entity, string commandName, TArgs args)
