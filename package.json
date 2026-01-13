@@ -1,6 +1,6 @@
 {
   "name": "app.warudo.modtool",
-  "version": "<version>",
+  "version": "0.14.3",
   "displayName": "Warudo Mod Tool",
   "description": "A modding tool for Warudo.",
   "unity": "2021.3",

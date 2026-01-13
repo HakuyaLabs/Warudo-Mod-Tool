@@ -9,57 +9,12 @@ permissions:
   contents: write
   
 jobs:
-  prepare-meta-files:
+  package-and-release:
     runs-on: ubuntu-latest
-    outputs:
-      branch_name: sdk-${{ github.ref_name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Update package.json version
-        run: |
-          VERSION="${{ github.ref_name }}"
-          # Extract first 3 version components (e.g., 0.14.5.1.2 -> 0.14.5)
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          MINOR=$(echo "$VERSION" | cut -d. -f2)
-          PATCH=$(echo "$VERSION" | cut -d. -f3)
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          # Update package.json (using different syntax for different environments)
-          if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            sed -i '' "s/\"version\": \"<version>\"/\"version\": \"$NEW_VERSION\"/" package.json
-          else
-            # Linux
-            sed -i "s/\"version\": \"<version>\"/\"version\": \"$NEW_VERSION\"/" package.json
-          fi
-          echo "Updated version to $NEW_VERSION"
-
-      - name: Generate metafiles
-        uses: rouvydev/metagen-gha
-        with:
-          seed: 'warudo-sdk'
-          directory: './'
-
-      - name: Create and push branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b sdk-${{ github.ref_name }}
-          git add .
-          git commit -m "Generate meta files for tag ${{ github.ref_name }}" || echo "No changes to commit"
-          git push origin sdk-${{ github.ref_name }}
-
-  package:
-    runs-on: ubuntu-latest
-    needs: prepare-meta-files
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: sdk-${{ github.ref_name }}
 
       - name: Create package directory
         run: mkdir -p package
