@@ -23,7 +23,7 @@ jobs:
         run: rsync -av --exclude='.git' --exclude='package' --exclude='.github' . package/
 
       - name: Create tar.gz archive
-        run: tar czf ../Warudo-Mod-Tool-${{ github.ref_name }}.tgz package
+        run: tar czf Warudo-Mod-Tool-${{ github.ref_name }}.tgz package
 
       - name: Create Release
         id: create_release
