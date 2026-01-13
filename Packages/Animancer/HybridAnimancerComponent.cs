@@ -677,8 +677,8 @@ namespace Animancer
         /// <summary><see cref="Animator.keepAnimatorControllerStateOnDisable"/></summary>
         public bool keepAnimatorControllerStateOnDisable
         {
-            get => Animator.keepAnimatorControllerStateOnDisable;
-            set => Animator.keepAnimatorControllerStateOnDisable = value;
+            get => Animator.keepAnimatorStateOnDisable;
+            set => Animator.keepAnimatorStateOnDisable = value;
         }
 #endif
 
