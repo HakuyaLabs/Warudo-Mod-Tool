@@ -11,6 +11,7 @@ using UMod.Shared;
 using UnityEditor;
 using UnityEngine;
 using VRM;
+using UniVRM10;
 using Warudo.Plugins.Core.Assets.Character;
 
 namespace Warudo.Editor {
@@ -104,10 +105,14 @@ namespace Warudo.Editor {
             selectedCharacter.transform.rotation = Quaternion.identity;
 
             var colliderGroups = selectedCharacter.GetComponentsInChildren<VRMSpringBoneColliderGroup>();
-            var colliderGroupCenters = colliderGroups.ToDictionary(it => it, it => 
+            var colliderGroupCenters = colliderGroups.ToDictionary(it => it, it =>
                 it.Colliders.Select(c => it.transform.TransformPoint(c.Offset)).ToArray());
-            
-            if (!normalizedBones) {
+
+            // Check if the model is VRM0 or VRM1, which already have normalized bones
+            var isVRMModel = selectedCharacter.GetComponent<VRMMeta>() != null ||
+                            selectedCharacter.GetComponent<Vrm10Instance>() != null;
+
+            if (!normalizedBones && !isVRMModel) {
                 var animator = selectedCharacter.GetComponent<Animator>();
                 BoneNormalization.Apply(selectedCharacter.gameObject, animator);
                 

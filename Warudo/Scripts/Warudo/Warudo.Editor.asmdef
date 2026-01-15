@@ -4,7 +4,8 @@
     "references": [
         "Warudo.Core",
         "Warudo.Plugins.Core",
-        "VRM"
+        "VRM",
+        "VRM10"
     ],
     "includePlatforms": [
         "Editor"
