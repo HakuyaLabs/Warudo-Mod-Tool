@@ -108,11 +108,7 @@ namespace Warudo.Editor {
             var colliderGroupCenters = colliderGroups.ToDictionary(it => it, it =>
                 it.Colliders.Select(c => it.transform.TransformPoint(c.Offset)).ToArray());
 
-            // Check if the model is VRM0 or VRM1, which already have normalized bones
-            var isVRMModel = selectedCharacter.GetComponent<VRMMeta>() != null ||
-                            selectedCharacter.GetComponent<Vrm10Instance>() != null;
-
-            if (!normalizedBones && !isVRMModel) {
+            if (!normalizedBones) {
                 var animator = selectedCharacter.GetComponent<Animator>();
                 BoneNormalization.Apply(selectedCharacter.gameObject, animator);
                 
