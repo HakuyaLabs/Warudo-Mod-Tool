@@ -1,0 +1,30 @@
+{
+    "name": "Warudo.Core",
+    "rootNamespace": "",
+    "references": [
+        "GUID:f51ebe6a0ceec4240a699833d6309b23",
+        "GUID:5c01796d064528144a599661eaab93a6",
+        "GUID:f75df48471e59b44eb9953819e0d54e8",
+        "GUID:71d468e2a0fb85443a9f7aa379ca4c5d",
+        "GUID:029c1c1b674aaae47a6841a0b89ad80e",
+        "GUID:162424425d0f5ff40bcf275d60a5ff7a",
+        "GUID:3e1f55b641cbc824881f0d12f6a5c69a",
+        "GUID:68bd7fdb68ef2684e982e8a9825b18a5",
+        "GUID:bbde805d927e795439d7a746d1749cab",
+        "GUID:5a46ad82eac024e4fbb6a0516a5def17",
+        "GUID:9887bf5401cdc9140916d3edbea10b69",
+        "GUID:9e705d6a72d9a354b810376671ddb3ac",
+        "GUID:33661e06c33d31b4c9223810bf503247",
+        "GUID:5e0b455853cd340e0813387221dfd501",
+        "GUID:d525ad6bd40672747bde77962f1c401e"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
