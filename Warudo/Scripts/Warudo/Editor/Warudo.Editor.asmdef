@@ -1,0 +1,29 @@
+{
+    "name": "Warudo.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:5fef407909ae5d44f90f576a9f8d8aa1",
+        "GUID:418b76a6718076643b471f861f015abf",
+        "GUID:05dd262a0c0a2f841b8252c8c3815582",
+        "GUID:e47c917724578cc43b5506c17a27e9a0",
+        "GUID:c579267770062bf448e75eb160330b7f",
+        "GUID:15fc0a57446b3144c949da3e2b9737a9"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "0.0.0.0",
+            "define": "URP_INSTALLED"
+        }
+    ],
+    "noEngineReferences": false
+}

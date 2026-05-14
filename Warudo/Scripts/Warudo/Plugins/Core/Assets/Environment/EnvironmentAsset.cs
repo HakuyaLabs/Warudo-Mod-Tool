@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using UMod;
+using UMod.Scripting;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.PostProcessing;

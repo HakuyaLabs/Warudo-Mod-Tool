@@ -15,14 +15,14 @@ MonoBehaviour:
   toolsIconSmall: {fileID: 0}
   toolsIconLarge: {fileID: 0}
   toolsName: Warudo Mod Tools
-  toolsVersion: 0.14.4
+  toolsVersion: 0.14.5
   firstRunWindow:
     assemblyQualifiedName: 
   developerName: TigerHix
   syncDeveloperName: 0
   gameName: Warudo
   syncGameName: 0
-  gameVersion: 0.14.4
+  gameVersion: 0.14.5
   syncGameVersion: 0
   modFileExtension: .warudo
   commandLineLaunchFormat: +mod=$PATH
@@ -75,22 +75,16 @@ MonoBehaviour:
       enabled: 1
       isSeparator: 0
       windowType:
-        assemblyQualifiedName: Warudo.Editor.SetupCharacterWindow, Assembly-CSharp-Editor,
+        assemblyQualifiedName: Warudo.Editor.SetupCharacterWindow, Warudo.Editor,
           Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
-    - menuEntryName: 
-      menuAction: 0
-      enabled: 1
-      isSeparator: 1
-      windowType:
-        assemblyQualifiedName: 
     - menuEntryName: Setup URP (Warudo Pro)
       menuAction: 5
-      enabled: 0
+      enabled: 1
       isSeparator: 0
       windowType:
-        assemblyQualifiedName: Warudo.Editor.SetupURPWindow, Assembly-CSharp-Editor,
-          Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
-    - menuEntryName: Item
+        assemblyQualifiedName: Warudo.Editor.SetupURPWindow, Warudo.Editor, Version=0.0.0.0,
+          Culture=neutral, PublicKeyToken=null
+    - menuEntryName: 
       menuAction: 0
       enabled: 1
       isSeparator: 1
