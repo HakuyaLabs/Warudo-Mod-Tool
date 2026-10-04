@@ -36,5 +36,10 @@ namespace Warudo.Plugins.Core.Nodes
         {
             throw new NotImplementedException();
         }
+
+        public override void OnAllNodesDeserialized(SerializedNode serialized)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

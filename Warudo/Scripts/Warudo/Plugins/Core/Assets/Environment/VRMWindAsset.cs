@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using UniGLTF.SpringBoneJobs.Blittables;
+using UniVRM10;
 using UnityEngine;
 using VRM;
 using Warudo.Core.Attributes;
@@ -88,7 +90,7 @@ namespace Warudo.Plugins.Core.Assets.Environment
 
         public bool SkipChest { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
 
-        public void LoadVrm(Transform vrmRoot)
+        public void LoadVrm(Transform vrmRoot, CharacterAsset character = null)
         {
             throw new NotImplementedException();
         }

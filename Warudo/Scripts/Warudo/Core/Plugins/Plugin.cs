@@ -6,6 +6,7 @@ using Warudo.Core.Persistence;
 using Warudo.Core.Scenes;
 using Warudo.Core.Serializations;
 using Warudo.Core.Utils;
+using static Warudo.Core.Server.ExternalCallbackManager;
 
 namespace Warudo.Core.Plugins {
     public abstract class Plugin : BehavioralEntity<PluginTypeMeta, SerializedPlugin> {
@@ -75,6 +76,31 @@ namespace Warudo.Core.Plugins {
                     }
                 }
             }
+        }
+
+        public ExternalCallback CreateExternalCallback(ReceiveCallBack handler)
+        {
+            return Context.ExternalCallbackManager.CreateExternalCallback(GetTypeMeta().Id, handler);
+        }
+
+        public ExternalCallback CreateExternalCallback(ReceiveCallBack handler, string description)
+        {
+            return Context.ExternalCallbackManager.CreateExternalCallback(GetTypeMeta().Id, handler, description);
+        }
+
+        public void RevokeExternalCallback(string callbackId)
+        {
+            Context.ExternalCallbackManager.RevokeExternalCallback(callbackId);
+        }
+        public void RevokeExternalCallback(ExternalCallback callback)
+        {
+            Context.ExternalCallbackManager.RevokeExternalCallback(callback);
+        }
+
+        public override void Destroy()
+        {
+            Context.ExternalCallbackManager.RevokeAllCallbacksFromPluginId(GetTypeMeta().Id);
+            base.Destroy();
         }
 
         public virtual FeatureStatusData[] GetFeatureStatusData() {

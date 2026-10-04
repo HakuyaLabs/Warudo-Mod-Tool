@@ -15,14 +15,14 @@ MonoBehaviour:
   toolsIconSmall: {fileID: 0}
   toolsIconLarge: {fileID: 0}
   toolsName: Warudo Mod Tools
-  toolsVersion: 0.14.5
+  toolsVersion: 0.15.2
   firstRunWindow:
     assemblyQualifiedName: 
   developerName: TigerHix
   syncDeveloperName: 0
   gameName: Warudo
   syncGameName: 0
-  gameVersion: 0.14.5
+  gameVersion: 0.15.2
   syncGameVersion: 0
   modFileExtension: .warudo
   commandLineLaunchFormat: +mod=$PATH

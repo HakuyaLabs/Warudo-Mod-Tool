@@ -13,6 +13,7 @@ namespace Warudo.Plugins.Core.Nodes
     {
         public CharacterAsset Character;
         public HumanBodyBones Bone;
+        public CharacterBoneLayer BoneLayer = CharacterBoneLayer.Normalized;
         public Vector3 Scale = Vector3.one;
         public float TransitionTime = 1.2f;
         public Ease TransitionEasing = Ease.OutCubic;

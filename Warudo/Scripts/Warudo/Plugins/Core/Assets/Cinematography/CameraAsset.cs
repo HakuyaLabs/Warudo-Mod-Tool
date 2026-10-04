@@ -14,6 +14,7 @@ using Warudo.Core.Serializations;
 using Warudo.Core.Utils;
 using Warudo.Plugins.Core.Assets.Character;
 using Warudo.Plugins.Core.Events;
+using Warudo.Plugins.Core.Utils;
 using Warudo.Scripts.Warudo.Core.Events;
 using static Warudo.Plugins.Core.CorePlugin;
 using Icon = Warudo.Core.Attributes.IconAttribute;
@@ -55,6 +56,7 @@ namespace Warudo.Plugins.Core.Assets.Cinematography
         public float FarClipPlane = 5000f;
         public bool OrthographicProjection = false;
         public bool ForceClearBackground = false;
+        public bool RequireCameraDepth = false;
         public string OutputHint = "CAMERA_OUTPUT_HINT".Localized();
         public bool SpoutOutput;
         public string SpoutOutputMessage = "";

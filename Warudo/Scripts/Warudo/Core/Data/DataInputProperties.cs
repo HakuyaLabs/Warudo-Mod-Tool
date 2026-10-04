@@ -1,5 +1,6 @@
 ﻿using System;
 using Warudo.Core.Localization;
+using Newtonsoft.Json.Linq;
 
 namespace Warudo.Core.Data {
 
@@ -9,13 +10,13 @@ namespace Warudo.Core.Data {
         public object typeProperties;
         public override void Localize() {
             base.Localize();
-            ((IDataInputTypeProperties) typeProperties)?.Localize();
+            (typeProperties as IDataInputTypeProperties)?.Localize();
         }
         public DataInputProperties Clone() {
             var ret = new DataInputProperties();
             CopyTo(ret);
             ret.transient = transient;
-            ret.typeProperties = ((IDataInputTypeProperties) typeProperties)?.Clone();
+            ret.typeProperties = typeProperties is JToken json ? json.DeepClone() : (typeProperties as IDataInputTypeProperties)?.Clone();
             return ret;
         }
     }

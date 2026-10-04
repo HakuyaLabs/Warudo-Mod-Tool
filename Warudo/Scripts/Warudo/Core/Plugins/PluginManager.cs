@@ -127,6 +127,11 @@ namespace Warudo.Core.Plugins {
             
             pluginList.Add(plugin);
             pluginMap[pluginType.id] = plugin;
+
+            Context.AssetTypeRegistry.RestoreAvailableTypes();
+            Context.NodeTypeRegistry.RestoreAvailableTypes();
+            Context.OpenedScene?.RestorePreservedAssetReferences();
+            Context.Service?.BroadcastOpenedScene();
             
             Context.EventBus.Broadcast(new PluginEnableEvent(plugin));
 
@@ -154,6 +159,10 @@ namespace Warudo.Core.Plugins {
         }
 
         public void DisablePlugin(Plugin plugin) {
+            DisablePlugin(plugin, true);
+        }
+
+        internal void DisablePlugin(Plugin plugin, bool unloadModHost) {
             var pluginType = plugin.Type.PluginType;
             if (!pluginMap.ContainsKey(pluginType.id)) {
                 throw new ArgumentOutOfRangeException($"Plugin {pluginType.id} is not enabled");
@@ -161,49 +170,32 @@ namespace Warudo.Core.Plugins {
             
             Context.EventBus.Broadcast(new PluginDisableEvent(plugin));
             
-            Debug.Log($"Destroying {pluginType.id} ({pluginType.version})");
-            plugin.Destroy();
-
-            if (plugin.ModHost != null) {
-                try {
-                    if (plugin.ModHost.IsModLoaded) {
-                        plugin.ModHost.UnloadMod(false);
-                    }
-                } catch (Exception e) {
-                    Log.Error($"Failed to unload mod {plugin.ModHost.name}", e);
-                }
-            }
-
-            var scene = Context.OpenedScene;
-            if (scene != null) {
-                var removals = new List<Guid>();
-                foreach (var (id, asset) in scene.GetAssets()) {
-                    if (asset.Plugin == plugin) {
-                        removals.Add(id);
-                    }
-                }
-                removals.ForEach(scene.RemoveAsset);
-                
-                foreach (var (_, graph) in scene.GetGraphs()) {
-                    removals.Clear();
-                    foreach (var (id, node) in graph.GetNodes()) {
-                        if (node.Plugin == plugin) {
-                            removals.Add(id);
-                        }
-                    }
-                    removals.ForEach(graph.RemoveNode);
-                }
-            }
-            
             var meta = Context.PluginTypeRegistry.GetTypeMeta(plugin.GetType());
-            foreach (var nodeType in meta.NodeTypes) {
+            // Unregister while plugin resources and ModHost are still available.
+            // Registries retain scene entities as placeholders instead of deleting
+            // their settings, links, references and hierarchy entries.
+            var nodeTypes = meta.NodeTypes.Concat(Context.NodeTypeRegistry.GetRegisteredTypes().Values
+                .Where(it => it.OwnerPlugin == plugin).Select(it => it.Type)).Distinct().ToList();
+            var assetTypes = meta.AssetTypes.Concat(Context.AssetTypeRegistry.GetRegisteredTypes().Values
+                .Where(it => it.OwnerPlugin == plugin).Select(it => it.Type)).Distinct().ToList();
+            foreach (var nodeType in nodeTypes) {
                 if (Context.NodeTypeRegistry.IsTypeRegistered(nodeType)) {
                     Context.NodeTypeRegistry.UnregisterType(nodeType);
                 }
             }
-            foreach (var assetType in meta.AssetTypes) {
+            foreach (var assetType in assetTypes) {
                 if (Context.AssetTypeRegistry.IsTypeRegistered(assetType)) {
                     Context.AssetTypeRegistry.UnregisterType(assetType);
+                }
+            }
+
+            Debug.Log($"Destroying {pluginType.id} ({pluginType.version})");
+            plugin.Destroy();
+            if (unloadModHost && plugin.ModHost != null) {
+                try {
+                    if (plugin.ModHost.IsModLoaded) plugin.ModHost.UnloadMod(false);
+                } catch (Exception e) {
+                    Log.Error($"Failed to unload mod {plugin.ModHost.name}", e);
                 }
             }
 

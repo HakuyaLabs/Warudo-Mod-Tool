@@ -1,4 +1,4 @@
-﻿using Cysharp.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using EmbedIO;
 using EmbedIO.Routing;
 using EmbedIO.Utilities;
@@ -58,7 +58,9 @@ namespace Warudo.Core.Server {
         public SceneEntry[] GetScenes() {
             return Context.SceneManager.GetScenes();
         }
+        
 
+        
         [Route(HttpVerbs.Post, "/scenes/{name}")]
         public async Task CreateScene(string name) {
             await UniTask.SwitchToMainThread();

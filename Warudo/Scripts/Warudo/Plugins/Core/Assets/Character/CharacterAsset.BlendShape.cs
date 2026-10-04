@@ -34,6 +34,11 @@ namespace Warudo.Plugins.Core.Assets.Character
         public Dictionary<string, Dictionary<string, object>> TrackingMaterialProperties = new(10);
         public Dictionary<string, Dictionary<string, object>> OverrideMaterialProperties = new(10);
         public List<ExpressionLayer> ExpressionLayers = new();
+        public static IEnumerable<(string Name, ExpressionPreset Preset, VRM10Expression Clip)> EnumerateVrm10Expressions(VRM10ObjectExpression expression)
+        {
+            throw new NotImplementedException();
+        }
+
         public void UpdateBlendShapes()
         {
             throw new NotImplementedException();

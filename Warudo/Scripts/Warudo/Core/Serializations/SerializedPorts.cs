@@ -21,7 +21,7 @@ namespace Warudo.Core.Serializations {
         public DataInputProperties properties;
 
         public override void Localize() {
-            properties.Localize();
+            properties?.Localize();
         }
         
         public SerializedDataInputPort Clone() {
@@ -31,7 +31,7 @@ namespace Warudo.Core.Serializations {
                 typeKind = typeKind,
                 defaultValue = defaultValue,
                 value = value,
-                properties = properties.Clone()
+                properties = properties?.Clone()
             };
         }
     }
@@ -58,7 +58,7 @@ namespace Warudo.Core.Serializations {
         public DataOutputProperties properties;
         
         public override void Localize() {
-            properties.Localize();
+            properties?.Localize();
         }
     }
     
@@ -67,7 +67,7 @@ namespace Warudo.Core.Serializations {
         public FlowInputProperties properties;
         
         public override void Localize() {
-            properties.Localize();
+            properties?.Localize();
         }
     }
 
@@ -76,7 +76,7 @@ namespace Warudo.Core.Serializations {
         public FlowOutputProperties properties;
         
         public override void Localize() {
-            properties.Localize();
+            properties?.Localize();
         }
     }
     
@@ -85,12 +85,13 @@ namespace Warudo.Core.Serializations {
         public TriggerProperties properties;
         
         public override void Localize() {
-            properties.Localize();
+            properties?.Localize();
         }
         
         public SerializedTriggerPort Clone() {
             return new SerializedTriggerPort {
-                properties = properties.Clone()
+                key = key,
+                properties = properties?.Clone()
             };
         }
     }

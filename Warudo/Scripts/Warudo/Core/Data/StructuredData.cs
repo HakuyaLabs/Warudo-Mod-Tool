@@ -120,6 +120,7 @@ namespace Warudo.Core.Data {
         public override SerializedStructuredData Serialize() {
             return new SerializedStructuredData {
                 id = Id,
+                version = GetVersion(),
                 dataInputs = DataInputPortCollection.Serialize(),
                 triggers = ShouldSerializeTriggers ? TriggerPortCollection.Serialize() : new(),
                 header = (this is ICollapsibleStructuredData c && Created) ? c.GetHeader() : null,
@@ -137,6 +138,7 @@ namespace Warudo.Core.Data {
             CollapsedSelf = serialized.collapsed;
 
             RemoveWatchers();
+            Exception failure = null;
             if (serialized.dataInputs != null) {
                 foreach (var (key, serializedPort) in serialized.dataInputs) {
                     var port = DataInputPortCollection.GetPort(key);
@@ -160,11 +162,13 @@ namespace Warudo.Core.Data {
                         port.SetSerializedValue(serializedPort.value, Scene, this);
                         // Debug.Log("Deserialized " + GetType().Name + "::" + key);
                     } catch (Exception e) {
+                        failure ??= e;
                         Log.UserError($"Failed to set data input port value for structured data {GetType().Name}::{port.Key} = {serializedPort.value}", e);
                     }
                 }
             }
             AddWatchers();
+            if (failure != null) throw new MissingStructuredDataException(PortKey, failure);
         }
     }
 

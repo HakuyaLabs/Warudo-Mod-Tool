@@ -73,6 +73,9 @@ namespace Warudo.Core.Graphs {
 		private string delayGuid = "006cb78d-295d-4c58-bca3-bfa1ee6cf1b3";
 
 		public void RecursivelySetData(Node inputNode, DataInputPort inputPort) {
+			// Placeholders preserve wiring, but cannot provide executable data.
+			// Leave downstream values intact instead of clearing them on each frame.
+			if (inputNode is PlaceholderNode) return;
 			// var log = inputNode.Type.Id == switchGuid || inputNode.Type.Id == delayGuid;
 			if (cachedPortData.TryGetValue(inputPort.Id, out var cachedValue)) {
 				if (cachedValue != null) {
@@ -120,6 +123,7 @@ namespace Warudo.Core.Graphs {
 				}
 				
 				var connection = connections[0];
+				if (connection.OutputNode is PlaceholderNode) return;
 				var outputPort = connection.OutputPort;
 				var computedValue = GetComputedValue(connection);
 				var computedValueNonNull = computedValue != null;

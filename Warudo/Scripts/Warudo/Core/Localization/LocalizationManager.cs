@@ -37,8 +37,10 @@ namespace Warudo.Core.Localization {
         }
 
         public void SetActiveLanguage(string language) {
+            var changed = activeLanguage != language;
             activeLanguage = language;
             LocalizationExtensions.CachedLocalizedEnums.Clear();
+            if (changed) Context.Service?.BroadcastPluginModsChanged(null);
         }
         
         public void LoadLocalizedStrings(JObject jObject) {
@@ -60,6 +62,16 @@ namespace Warudo.Core.Localization {
             }
             // Debug.Log($"Added {key} for language {language}: {localizedString}");
             localizedStrings[key][language] = localizedString;
+        }
+
+        internal Dictionary<string, string> GetTranslations(string key) {
+            return key != null && localizedStrings.TryGetValue(key, out var translations)
+                ? new Dictionary<string, string>(translations)
+                : new Dictionary<string, string>();
+        }
+
+        internal string GetFallbackLanguage(string language) {
+            return language != null && fallbackMapping.TryGetValue(language, out var fallback) ? fallback : null;
         }
 
         public string GetLocalizedString(string key, string language) {

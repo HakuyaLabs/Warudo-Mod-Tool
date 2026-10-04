@@ -8,6 +8,7 @@ using Warudo.Core.Attributes;
 using Warudo.Core.Events;
 using Warudo.Core.Graphs;
 using Warudo.Core.Serializations;
+using Warudo.Core.Server;
 using Warudo.Core.Utils;
 using static Warudo.Core.ModUtils.PluginRouter;
 using Event = Warudo.Core.Events.Event;
@@ -47,6 +48,8 @@ namespace Warudo.Core.Data {
         public DataInputPortCollection DataInputPortCollection { get; } = new();
         
         public TriggerPortCollection TriggerPortCollection { get; } = new();
+
+        internal HashSet<string> FailedSdPorts { get; } = new();
 
         internal Entity() {
             DataInputPortCollection.Parent = this;
@@ -88,7 +91,26 @@ namespace Warudo.Core.Data {
         protected virtual void OnCreate() {
         }
 
+        internal void AbortCreation() {
+            // Define/OnCreate may already have created child structured data or
+            // subscriptions before the final Created flag is set.
+            Created = true;
+            DestroySafely();
+        }
+
+        internal void DestroySafely() {
+            try { Destroy(); }
+            catch (Exception e) {
+                Log.Error("Error while cleaning up " + GetType().Name + " (" + Id + ")", e);
+                DestroyCore();
+            }
+        }
+
         public virtual void Destroy() {
+            DestroyCore();
+        }
+
+        private void DestroyCore() {
             if (!Created) {
                 return;
                 // throw new Exception($"Attempting to destroy {GetType().Name} ({Id}) which is already destroyed");
@@ -120,11 +142,11 @@ namespace Warudo.Core.Data {
             // Destroy all structured data entities
             foreach (var (_, port) in DataInputPortCollection.GetPorts()) {
                 if (port.Type.GetKind() == TypeKind.StructuredData) {
-                    (port.Getter() as StructuredData)?.Destroy();
+                    (port.Getter() as StructuredData)?.DestroySafely();
                 } else if (port.Type.GetKind() == TypeKind.StructuredDataArray) {
                     if (port.Getter() is Array arr) {
                         foreach (var sd in arr) {
-                            (sd as StructuredData)?.Destroy();
+                            (sd as StructuredData)?.DestroySafely();
                         }
                     }
                 }
@@ -490,6 +512,7 @@ namespace Warudo.Core.Data {
         private readonly Dictionary<Type, HashSet<Guid>> eventSubscribers = new();
         private readonly HashSet<Guid> signalConnections = new();
         private readonly HashSet<Guid> commandConnections = new();
+        private readonly HashSet<string> wsConnections = new();
 
         public Guid Subscribe<T>(OnEvent<T> handler, bool alwaysReceiveEvent = false) where T : Event {
             if (!eventSubscribers.ContainsKey(typeof(T))) {
@@ -548,6 +571,29 @@ namespace Warudo.Core.Data {
         public void UnregisterCommand(Guid commandId) {
             if (commandConnections.Remove(commandId)) {
                 Context.PluginRouter.UnregisterCommand(commandId);
+            }
+        }
+
+        public ExternalCallbackManager.ExternalWebSocket CreateWebSocketChannel(ExternalCallbackManager.ReceiveWebSocket handler)
+        {
+            var webSocketChannel = Context.ExternalCallbackManager.CreateWebSocketChannel(IdString, handler);
+            wsConnections.Add(webSocketChannel.channelId);
+            return webSocketChannel;
+        }
+
+        public void RemoveWebSocketChannel(string webSocketChannelId)
+        {
+            if (wsConnections.Remove(webSocketChannelId))
+            {
+                Context.ExternalCallbackManager.RemoveWebSocketChannel(webSocketChannelId);
+            }
+        }
+
+        public void RemoveWebSocketChannel(ExternalCallbackManager.ExternalWebSocket webSocketChannel)
+        {
+            if (wsConnections.Remove(webSocketChannel.channelId))
+            {
+                Context.ExternalCallbackManager.RemoveWebSocketChannel(webSocketChannel);
             }
         }
 

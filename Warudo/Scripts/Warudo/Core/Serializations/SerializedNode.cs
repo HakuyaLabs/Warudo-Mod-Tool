@@ -20,9 +20,9 @@ namespace Warudo.Core.Serializations {
         public override void Localize() {
             base.Localize();
             name = name.Localized();
-            dataOutputs.ForEach(it => it.Value.Localize());
-            flowInputs.ForEach(it => it.Value.Localize());
-            flowOutputs.ForEach(it => it.Value.Localize());
+            dataOutputs?.ForEach(it => it.Value?.Localize());
+            flowInputs?.ForEach(it => it.Value?.Localize());
+            flowOutputs?.ForEach(it => it.Value?.Localize());
         }
     }
     

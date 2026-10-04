@@ -12,6 +12,7 @@ namespace Warudo.Plugins.Core.Nodes
     {
         public CharacterAsset Character;
         public HumanBodyBones Bone;
+        public CharacterBoneLayer BoneLayer = CharacterBoneLayer.Normalized;
         public BonePositionType Type = BonePositionType.WorldPosition;
         public enum BonePositionType
         {

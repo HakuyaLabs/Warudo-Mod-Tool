@@ -132,12 +132,14 @@ namespace Warudo.Core.Graphs {
 		}
 
 		public T AddNode<T>() where T : Node {
+			if (typeof(PlaceholderNode).IsAssignableFrom(typeof(T))) throw new UserException("Placeholder nodes require serialized node data");
 			var node = Context.NodeTypeRegistry.CreateEntity(typeof(T));
 			AddNode(node);
 			return (T) node;
 		}
 		
 		public Node AddNode(string typeId) {
+			if (typeId is UnknownNode.TypeId or ErrorNode.TypeId) throw new UserException("Placeholder nodes require serialized node data");
 			var node = Context.NodeTypeRegistry.CreateEntity(typeId);
 			AddNode(node);
 			return node;
@@ -147,17 +149,78 @@ namespace Warudo.Core.Graphs {
 			if (nodes.ContainsKey(serializedNode.id)) {
 				throw new ArgumentException($"Node {serializedNode.id} already exists", nameof(serializedNode));
 			}
-			var node = Context.NodeTypeRegistry.CreateEntity(serializedNode.typeId);
-			node.Graph = this;
-			node.Store(serializedNode.id);
-			try {
-				node.Deserialize(serializedNode);
-			} catch {
-				// Unstore node
-				node.Destroy();
-				throw;
-			}
+			var node = CreateDeserializedNode(serializedNode, false);
 			AddNode(node);
+			return node;
+		}
+
+		private Node CreateDeserializedNode(SerializedNode serializedNode, bool forceUnknown) {
+			var snapshot = SerializedEntitySnapshot.Clone(serializedNode);
+			Node node = null;
+			var brokenPorts = new Dictionary<string, TypeKind>();
+			try {
+				node = forceUnknown ? Context.NodeTypeRegistry.CreateEntity(UnknownNode.TypeId)
+					: Context.NodeTypeRegistry.CreateEntityOrUnknown(snapshot.typeId, UnknownNode.TypeId);
+				node.Graph = this;
+				node.Deserialize(SerializedEntitySnapshot.Clone(snapshot));
+				if (node.FailedSdPorts.Count == 0) return node;
+			} catch (Exception e) {
+				Log.UserError("Could not restore node " + snapshot.id + "; preserving its data as an error node", e);
+			}
+			if (node != null) foreach (var key in node.FailedSdPorts)
+				brokenPorts[key] = node.DataInputPortCollection.GetPort(key)?.Type.GetKind() ?? TypeKind.StructuredData;
+			node?.DestroySafely();
+			return CreateErrorNode(snapshot, brokenPorts);
+		}
+
+		private ErrorNode CreateErrorNode(SerializedNode snapshot, Dictionary<string, TypeKind> brokenPorts) {
+			var error = (ErrorNode) Context.NodeTypeRegistry.CreateEntity(ErrorNode.TypeId);
+			error.Graph = this;
+			error.Deserialize(snapshot);
+			error.SetBrokenPorts(brokenPorts);
+			return error;
+		}
+
+		public Node ReplaceNode(Node current, SerializedNode snapshot, bool forceUnknown = false) {
+			return ReplaceNode(current, snapshot, forceUnknown, null);
+		}
+
+		internal Node PreserveErrorNode(Node current, SerializedNode snapshot) {
+			var brokenPorts = current.FailedSdPorts.ToDictionary(key => key,
+				key => current.DataInputPortCollection.GetPort(key)?.Type.GetKind() ?? TypeKind.StructuredData);
+			return ReplaceNode(current, snapshot, false, brokenPorts);
+		}
+
+		private Node ReplaceNode(Node current, SerializedNode snapshot, bool forceUnknown, Dictionary<string, TypeKind> errorPorts) {
+			if (GetNode(current.Id) != current || snapshot.id != current.Id) throw new ArgumentException("Node replacement must retain its graph and ID");
+			var data = inputDataConnections.Values.SelectMany(it => it.Values).SelectMany(it => it)
+				.Where(it => it.InputNode == current || it.OutputNode == current).ToList();
+			var flow = outputFlowConnections.Values.SelectMany(it => it.Values)
+				.Where(it => it.InputNode == current || it.OutputNode == current).ToList();
+			var serializedData = data.Select(it => it.Serialize()).ToList();
+			var serializedFlow = flow.Select(it => it.Serialize()).ToList();
+			foreach (var connection in data) RemoveDataConnection(connection, false, false);
+			foreach (var connection in flow) RemoveFlowConnection(connection);
+			nodes.Remove(current.Id);
+			current.DestroySafely();
+			var node = errorPorts != null ? CreateErrorNode(snapshot, errorPorts) : CreateDeserializedNode(snapshot, forceUnknown);
+			AddNode(node);
+			try {
+				node.OnAllNodesDeserialized(snapshot);
+				if (node is not PlaceholderNode && node.FailedSdPorts.Count > 0) node = PreserveErrorNode(node, snapshot);
+			} catch (Exception e) {
+				Log.UserError("Could not initialize restored node " + node.Id, e);
+				if (node is not PlaceholderNode) node = PreserveErrorNode(node, snapshot);
+			}
+			foreach (var connection in serializedData) {
+				try { DeserializeDataConnection(connection); }
+				catch (Exception e) { Log.UserError("Could not reconnect restored node " + node.Id, e); }
+			}
+			foreach (var connection in serializedFlow) {
+				try { DeserializeFlowConnection(connection); }
+				catch (Exception e) { Log.UserError("Could not reconnect restored node " + node.Id, e); }
+			}
+			Context.Service?.BroadcastOpenedScene();
 			return node;
 		}
 		
@@ -237,7 +300,7 @@ namespace Warudo.Core.Graphs {
 		public bool AddDataConnection(Node from, string fromData, Node to, string toData) 
 			=> AddDataConnection(new DataConnection(from, to, from.DataOutputPortCollection.GetPort(fromData), to.DataInputPortCollection.GetPort(toData)));
 
-		public void RemoveDataConnection(DataConnection connection, bool broadcastInputPortValue = true) {
+		public void RemoveDataConnection(DataConnection connection, bool broadcastInputPortValue = true, bool clearInputValue = true) {
 			if (!nodes.ContainsKey(connection.InputNode.Id)) {
 				throw new ArgumentException($"Input node {connection.InputNode.Id} does not exist", nameof(connection));
 			}
@@ -263,12 +326,12 @@ namespace Warudo.Core.Graphs {
 			var type = connection.InputPort.Type;
 				
 			// If reference type, clear value
-			if (type.GetKind().AllowNullData()) {
+			if (clearInputValue && type.GetKind().AllowNullData()) {
 				connection.InputPort.SetValue(null);
 			}
 				
 			// If array type, set to empty array
-			if (type.GetKind().IsArray()) {
+			if (clearInputValue && type.GetKind().IsArray()) {
 				connection.InputPort.SetValue(type.GetElementType().GetEmptyArray());
 			}
 			
@@ -384,6 +447,7 @@ namespace Warudo.Core.Graphs {
 		}
 
 		public void InvokeFlow(Node from, string outputPortKey, bool invokeWhenDisabled = false) {
+			if (from is PlaceholderNode) return;
 			if (!Enabled && !invokeWhenDisabled) return;
 
 			if (outputPortKey == null) {
@@ -408,6 +472,7 @@ namespace Warudo.Core.Graphs {
 		}
 
 		public void InvokeFlowAtInput(Node start, string inputPortKey, bool invokeWhenDisabled = false) {
+			if (start is PlaceholderNode) return;
 			if (!Enabled && !invokeWhenDisabled) return;
 			
 			if (inputPortKey == null) {
@@ -440,8 +505,10 @@ namespace Warudo.Core.Graphs {
 			InvokeFlow(cont.Connection.OutputNode, cont.Connection.OutputPort.Key, invokeWhenDisabled);
 		}
 
-		public SerializedGraph Serialize() {
-			return new SerializedGraph {
+		public SerializedGraph Serialize() => Serialize(true);
+
+		public SerializedGraph Serialize(bool includeTransientData) {
+			var serialized = new SerializedGraph {
 				id = Id,
 				enabled = Enabled,
 				name = Name,
@@ -453,6 +520,8 @@ namespace Warudo.Core.Graphs {
 				flowConnections = outputFlowConnections.SelectMany(it => it.Value.Values).Select(it => it.Serialize()).ToList(),
 				properties = Properties.Serialize()
 			};
+			if (!includeTransientData) foreach (var node in serialized.nodes.Values) SerializedEntitySnapshot.StripTransient(node);
+			return serialized;
 		}
 
 		public void DeserializeNodes(SerializedGraph serializedGraph) {

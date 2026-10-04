@@ -14,6 +14,11 @@ namespace Warudo.Plugins.Core.Assets.Cinematography
 {
     public partial class CameraAsset
     {
+        internal void StopMediaIO()
+        {
+            throw new NotImplementedException();
+        }
+
         public async partial void TakeScreenshot()
         {
             throw new NotImplementedException();

@@ -43,6 +43,20 @@ namespace Warudo.Core.Utils {
             return ConfirmType.Cancel;
         }
 
+        public static ConfirmType ConfirmYesNo(string text, string caption) {
+            try {
+                var result = MessageBox(GetWindowHandle(), text, caption, (uint)(0x00000000L | 0x00000004L | 0x00000030L));
+                return result switch {
+                    6 => ConfirmType.Yes,
+                    7 => ConfirmType.No,
+                    _ => ConfirmType.No
+                };
+            } catch (Exception) {
+                // ignored
+            }
+            return ConfirmType.No;
+        }
+
         public enum ConfirmType {
             Yes,
             No,

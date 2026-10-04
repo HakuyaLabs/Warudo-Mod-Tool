@@ -18,8 +18,17 @@ namespace Warudo.Core.Graphs {
 	public record DataInputPort(string Key, Type Type, string DefaultValue, Func<object> Getter, Action<object> Setter, DataInputProperties Properties, Action<object> StructuredDataInitializer) : Port(Key, Properties) {
 
 		private object valueRef;
+
+		private sealed class SerializationState { public string PreservedValue; public bool HasPreservedValue; }
+		private SerializationState serializationState = new();
+		public string PreservedSerializedValue {
+			get => serializationState.PreservedValue;
+			set { serializationState.PreservedValue = value; serializationState.HasPreservedValue = value != null; }
+		}
+		internal void ShareSerializationState(DataInputPort port) => serializationState = port.serializationState;
+		internal bool HasPreservedSerializedValue => serializationState.HasPreservedValue;
 		
-		public string SerializeValue() => Serialize(Type, Getter());
+		public string SerializeValue() => serializationState.HasPreservedValue ? PreservedSerializedValue : Serialize(Type, Getter());
 		
 		public string SerializeArrayElement(int index) {
 			if (!Type.GetKind().IsArray()) {
@@ -189,6 +198,17 @@ namespace Warudo.Core.Graphs {
 		}
 
 		public static object Deserialize(Type type, string portKey, string serializedValue, Scene scene, Entity structuredDataParent) {
+			try {
+				if (serializedValue == null && type.GetKind() is TypeKind.StructuredData or TypeKind.StructuredDataArray)
+					throw new JsonSerializationException("Structured data cannot be null");
+				return DeserializeCore(type, portKey, serializedValue, scene, structuredDataParent);
+			} catch (Exception e) when (type.GetKind() is TypeKind.StructuredData or TypeKind.StructuredDataArray) {
+				if (e is MissingStructuredDataException failure && failure.PortKey == portKey) throw;
+				throw new MissingStructuredDataException(portKey, e);
+			}
+		}
+
+		private static object DeserializeCore(Type type, string portKey, string serializedValue, Scene scene, Entity structuredDataParent) {
 			if (serializedValue == null) return null;
 			switch (type.GetKind()) {
 				case TypeKind.Reference:
@@ -221,8 +241,9 @@ namespace Warudo.Core.Graphs {
 						return null;
 					}
 					var asset = scene.GetAsset(serializedAsset.id);
-					if (asset == null) {
+					if (asset == null || asset is UnknownAsset || !type.IsInstanceOfType(asset)) {
 						Debug.LogWarning($"Could not find loaded asset {serializedValue}");
+						return null;
 					}
 					return asset;
 				}
@@ -262,8 +283,9 @@ namespace Warudo.Core.Graphs {
 						Asset asset = null;
 						if (serializedAsset != null) {
 							asset = scene.GetAsset(serializedAsset.id);
-							if (asset == null) {
+							if (asset == null || asset is UnknownAsset || !elType.IsInstanceOfType(asset)) {
 								Debug.LogWarning($"Could not find loaded asset {serializedAsset}");
+								asset = null;
 							}
 						}
 						assetValues.SetValue(asset, index);
@@ -291,10 +313,15 @@ namespace Warudo.Core.Graphs {
 					var sd = Context.StructuredDataTypeRegistry.CreateEntity(type);
 					serializedStructuredData.id = Guid.NewGuid(); // Always use new ID for structured data - or it could clash with existing entity (e.g. duplicate asset)
 
-					sd.Scene = scene;
-					sd.PortKey = portKey;
-					sd.Parent = structuredDataParent;
-					sd.Deserialize(serializedStructuredData);
+					try {
+						sd.Scene = scene;
+						sd.PortKey = portKey;
+						sd.Parent = structuredDataParent;
+						sd.Deserialize(serializedStructuredData);
+					} catch {
+						sd.DestroySafely();
+						throw;
+					}
 					return sd;
 				}
 				case TypeKind.StructuredDataArray: {
@@ -307,17 +334,17 @@ namespace Warudo.Core.Graphs {
 
 					var elType = type.GetElementType()!;
 					var array = Array.CreateInstance(elType, jArray.Count);
-					for (var index = 0; index < jArray.Count; index++) {
-						var jToken = jArray[index];
-						if (jToken.Type != JTokenType.Object) {
-							throw new Exception($"Could not deserialize structured data array from {serializedValue}. Was it correctly serialized?");
+					try {
+						for (var index = 0; index < jArray.Count; index++) {
+							var jToken = jArray[index];
+							if (jToken.Type != JTokenType.Object) {
+								throw new Exception($"Could not deserialize structured data array from {serializedValue}. Was it correctly serialized?");
+							}
+							array.SetValue(Deserialize(elType, portKey, jToken.ToString(), scene, structuredDataParent), index);
 						}
-						// Debug.Log("Array type is: " + elType.AssemblyQualifiedName);
-						var o = Deserialize(elType, portKey, jToken.ToString(), scene, structuredDataParent);
-						// Debug.Log("Actual deserialized type is: " + o.GetType().AssemblyQualifiedName);
-						array.SetValue(
-							o, 
-							index);
+					} catch {
+						foreach (var value in array) (value as StructuredData)?.DestroySafely();
+						throw;
 					}
 					return array;
 				}
@@ -328,6 +355,7 @@ namespace Warudo.Core.Graphs {
 		}
 		
 		public void SetValue(object value) {
+			if (value != null && !Type.IsInstanceOfType(value)) throw new ArgumentException("Value is not assignable to port " + Key);
 			// Destroy structured data not referenced in the new value, as this port is the only reference to it
 			if (Type.GetKind() == TypeKind.StructuredData) {
 				var sd = (StructuredData) Getter();
@@ -349,10 +377,31 @@ namespace Warudo.Core.Graphs {
 				}
 			}
 			Setter(value);
+			PreservedSerializedValue = null;
 		}
 		
 		public void SetSerializedValue(string serializedValue, Scene scene, Entity structuredDataParent) {
-			SetValue(Deserialize(Type, Key, serializedValue, scene, structuredDataParent));
+			try {
+				var preserve = NeedsAssetPreservation(serializedValue, scene);
+				SetValue(Deserialize(Type, Key, serializedValue, scene, structuredDataParent));
+				if (preserve) PreservedSerializedValue = serializedValue;
+				structuredDataParent?.FailedSdPorts.Remove(Key);
+			} catch (Exception e) when (Type.GetKind() is TypeKind.StructuredData or TypeKind.StructuredDataArray) {
+				serializationState.PreservedValue = serializedValue;
+				serializationState.HasPreservedValue = true;
+				structuredDataParent?.FailedSdPorts.Add(Key);
+				if (e is MissingStructuredDataException) throw;
+				throw new MissingStructuredDataException(Key, e);
+			}
+		}
+
+		private bool NeedsAssetPreservation(string serializedValue, Scene scene) {
+			if (serializedValue == null || Type.GetKind() is not (TypeKind.Asset or TypeKind.AssetArray)) return false;
+			var type = Type.IsArray ? Type.GetElementType()! : Type;
+			var identifiers = Type.IsArray ? JsonConvert.DeserializeObject<AssetIdentifier[]>(serializedValue)
+				: new[] { JsonConvert.DeserializeObject<AssetIdentifier>(serializedValue) };
+			return identifiers?.Any(identifier => identifier != null &&
+				(scene?.GetAsset(identifier.id) is not Asset asset || asset is UnknownAsset || !type.IsInstanceOfType(asset))) == true;
 		}
 		
 		public object ParseSerializedValue(string serializedValue, Scene scene, Entity structuredDataParent) {
@@ -732,6 +781,7 @@ namespace Warudo.Core.Graphs {
 	}
 	public record WatchedDataInputPort : DataInputPort {
 		public WatchedDataInputPort(DataInputPort port, Action<object> setter) : base(port.Key, port.Type, port.DefaultValue, port.Getter, setter, port.Properties, port.StructuredDataInitializer) {
+			ShareSerializationState(port);
 		}
 	}
 
