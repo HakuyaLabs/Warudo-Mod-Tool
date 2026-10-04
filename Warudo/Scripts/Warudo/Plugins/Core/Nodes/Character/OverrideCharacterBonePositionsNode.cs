@@ -13,6 +13,7 @@ namespace Warudo.Plugins.Core.Nodes
         public CharacterAsset Character;
         public Vector3[] BoneLocalPositions;
         public float[] BonePositionWeights;
+        public CharacterBoneLayer BoneLayer = CharacterBoneLayer.Normalized;
         public bool Immediate = false;
         public bool SkipNonHipsBones = true;
         public bool SkipEyeBones = true;

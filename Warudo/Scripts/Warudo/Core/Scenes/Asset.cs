@@ -72,6 +72,7 @@ namespace Warudo.Core.Scenes {
         }
         
         public override SerializedAsset Serialize() {
+            UpdateErrorRecoveryTrigger();
             return new SerializedAsset {
                 id = Id,
                 typeId = Type.AssetType.id,
@@ -79,7 +80,9 @@ namespace Warudo.Core.Scenes {
                 active = Active,
                 version = GetVersion(),
                 dataInputs = DataInputPortCollection.Serialize(),
-                triggers = TriggerPortCollection.Serialize()
+                triggers = TriggerPortCollection.Serialize(),
+                placeholderKind = FailedSdPorts.Count > 0 ? "error" : null,
+                errorPorts = FailedSdPorts.Count > 0 ? FailedSdPorts.ToArray() : null
             };
         }
         
@@ -89,6 +92,7 @@ namespace Warudo.Core.Scenes {
             }
             
             Store(serialized.id);
+            FailedSdPorts.Clear();
             if (serialized.version != GetVersion()) {
                 Debug.Log($"Asset {GetType().Name} was serialized with version {serialized.version} but current version is {GetVersion()}. There may be compatibility issues.");
             }
@@ -121,6 +125,32 @@ namespace Warudo.Core.Scenes {
             }
         }
         
+        internal void UpdateErrorRecoveryTrigger() {
+            if (FailedSdPorts.Count == 0) {
+                if (errorRecoveryTriggerKey != null) TriggerPortCollection.RemovePort(errorRecoveryTriggerKey);
+                errorRecoveryTriggerKey = null;
+                return;
+            }
+            if (errorRecoveryTriggerKey == null) {
+                errorRecoveryTriggerKey = "__recover__";
+                for (var suffix = 2; GetTriggerPort(errorRecoveryTriggerKey) != null; suffix++) errorRecoveryTriggerKey = "__recover__" + suffix;
+            }
+            var key = errorRecoveryTriggerKey;
+            bool CanRecover() => FailedSdPorts.All(portKey => DataInputPortCollection.GetPort(portKey)?.Type.GetKind() == TypeKind.StructuredDataArray);
+            if (GetTriggerPort(key) == null) AddTriggerPort(key, () => {
+                if (!CanRecover()) return;
+                foreach (var portKey in FailedSdPorts.ToArray()) {
+                    try { DataInputPortCollection.GetPort(portKey).SetSerializedValue("[]", Scene, this); }
+                    catch (Exception e) { Log.UserError("Could not recover asset " + Name, e); }
+                }
+                UpdateErrorRecoveryTrigger();
+                Broadcast();
+            }, new TriggerProperties { label = "RECOVER_ASSET", transient = true });
+            GetTriggerPort(key).Properties.disabled = !CanRecover();
+        }
+
+        private string errorRecoveryTriggerKey;
+
         public override void Broadcast() {
             // Do not broadcast if this asset is not added to a scene
             if (Scene == null) {

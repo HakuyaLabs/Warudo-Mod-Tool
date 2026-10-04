@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using Warudo.Core.Attributes;
 using Warudo.Core.Data;
@@ -13,6 +14,38 @@ using Warudo.Plugins.Core.Events;
 
 namespace Warudo.Core.Scenes {
     public sealed class AssetTypeRegistry : EntityTypeRegistry<Asset, AssetTypeMeta, AssetTypeCheckpoint> {
+        private bool restorationQueued;
+
+        public override AssetTypeMeta RegisterType(string id, Type type) {
+            var meta = base.RegisterType(id, type);
+            if (Context.OpenedScene != null && !restorationQueued) {
+                restorationQueued = true;
+                UniTask.Post(() => { restorationQueued = false; RestoreAvailableTypes(); });
+            }
+            return meta;
+        }
+
+        public void RestoreAvailableTypes() {
+            var scene = Context.OpenedScene;
+            if (scene == null) return;
+            foreach (var placeholder in scene.GetAssets().Values.OfType<UnknownAsset>().ToList()) {
+                if (!IsTypeRegistered(placeholder.OriginalTypeId)) continue;
+                try { scene.ReplaceAsset(placeholder, placeholder.Serialize()); }
+                catch (Exception e) { Log.UserError("Could not restore placeholder asset " + placeholder.Id, e); }
+            }
+            foreach (var asset in scene.GetAssets().Values.Where(it => it.FailedSdPorts.Count > 0).ToList()) {
+                var failedCount = asset.FailedSdPorts.Count;
+                foreach (var key in asset.FailedSdPorts.ToArray()) {
+                    var port = asset.DataInputPortCollection.GetPort(key);
+                    if (port?.HasPreservedSerializedValue != true) continue;
+                    try { port.SetSerializedValue(port.PreservedSerializedValue, scene, asset); }
+                    catch (MissingStructuredDataException) { /* Retain the original value until its dependency returns or the user discards it. */ }
+                }
+                asset.UpdateErrorRecoveryTrigger();
+                if (failedCount != asset.FailedSdPorts.Count) asset.Broadcast();
+            }
+            scene.RestorePreservedAssetReferences();
+        }
         protected override AssetTypeMeta CreateMeta(string id, Type type) {
             var meta = base.CreateMeta(id, type);
             
@@ -44,7 +77,7 @@ namespace Warudo.Core.Scenes {
             if (attribute == null) {
                 throw new Exception($"Asset type {type.FriendlyFullName()} does not have an ID");
             }
-            var meta = base.RegisterType(attribute.Id, type);
+            var meta = RegisterType(attribute.Id, type);
             DataConverters.RegisterGenericConverter(type, typeof(Asset), new IdentityConverter());
             Context.EventBus.Broadcast(new AssetTypeRegisteredEvent(type));
             return meta;
@@ -56,14 +89,16 @@ namespace Warudo.Core.Scenes {
                     .Values
                     .Where(it => it.Type.AssetType.id == id).ToList();
                 foreach (var currentAsset in currentAssets) {
-                    Context.OpenedScene.RemoveAsset(currentAsset.Id);
+                    var snapshot = currentAsset.Serialize();
+                    SerializedEntitySnapshot.StripTransient(snapshot);
+                    Context.OpenedScene.ReplaceAsset(currentAsset, snapshot, true);
                 }
             }
             base.UnregisterType(id);
         }
 
         public override AssetTypeCheckpoint CreateTypeCheckpoint(string id) {
-            var checkpoint = new AssetTypeCheckpoint {Id = id};
+            var checkpoint = new AssetTypeCheckpoint {Id = id, EntitiesRetained = true};
             
             if (Context.OpenedScene != null) {
                 var existingAssets = Context.OpenedScene.GetAssets()
@@ -102,7 +137,12 @@ namespace Warudo.Core.Scenes {
         public override void RestoreTypeCheckpoint(AssetTypeCheckpoint checkpoint) {
             // Restore assets and references
             if (Context.OpenedScene == null) return;
-            Context.OpenedScene.DeserializeAssets(checkpoint.SerializedAssets);
+            // Retained placeholders are authoritative; do not overwrite current
+            // values or resurrect assets deleted while their mod was disabled.
+            RestoreAvailableTypes();
+            Context.OpenedScene.DeserializeAssets(checkpoint.SerializedAssets.Where(it =>
+                !checkpoint.EntitiesRetained && Context.OpenedScene.GetAsset(it.id) == null).ToList());
+            if (checkpoint.EntitiesRetained) return;
             foreach (var (refererId, port, referenceId) in checkpoint.AssetReferrers) {
                 var referer = Context.OpenedScene.GetAsset(refererId);
                 var reference = Context.OpenedScene.GetAsset(referenceId);
@@ -160,6 +200,7 @@ namespace Warudo.Core.Scenes {
     }
     
     public class AssetTypeCheckpoint : TypeCheckpoint {
+        public bool EntitiesRetained;
         public readonly List<SerializedAsset> SerializedAssets = new();
             
         // References to the asset type in scene and graph

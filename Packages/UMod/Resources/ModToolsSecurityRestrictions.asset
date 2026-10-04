@@ -20,6 +20,8 @@ MonoBehaviour:
       - UnityEditor
       - Mono.Cecil
       - UMod-ModTools
+      - Acornima
+      - Jint
       useRegexMatch: 0
     namespaceReferences:
       defaultBehaviour: 0
@@ -59,7 +61,6 @@ MonoBehaviour:
       - UnityEngine.Application.Quit
       - UMod.ModHost.AllLoadedModHosts
       - UMod.ModHost.AllModHosts
-      - UnityEngine.Application.OpenURL
       useRegexMatch: 0
     ignoreCase: 0
     allowPInvoke: 0

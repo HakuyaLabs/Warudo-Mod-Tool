@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using Warudo.Core.Attributes;
 using Warudo.Core.Graphs;
@@ -12,6 +13,29 @@ using Warudo.Core.Utils;
 
 namespace Warudo.Core.Data {
 	public sealed class NodeTypeRegistry : EntityTypeRegistry<Node, NodeTypeMeta, NodeTypeCheckpoint> {
+		private bool restorationQueued;
+
+		public override NodeTypeMeta RegisterType(string id, Type type) {
+			var meta = base.RegisterType(id, type);
+			if (Context.OpenedScene != null && !restorationQueued) {
+				restorationQueued = true;
+				// OwnerPlugin and the remaining types are assigned by the caller
+				// before the next player-loop turn.
+				UniTask.Post(() => { restorationQueued = false; RestoreAvailableTypes(); });
+			}
+			return meta;
+		}
+
+		public void RestoreAvailableTypes() {
+			if (Context.OpenedScene == null) return;
+			foreach (var graph in Context.OpenedScene.GetGraphs().Values.ToList()) {
+				foreach (var placeholder in graph.GetNodes().Values.OfType<PlaceholderNode>().ToList()) {
+					if (!IsTypeRegistered(placeholder.OriginalTypeId)) continue;
+					try { graph.ReplaceNode(placeholder, placeholder.GetSnapshot()); }
+					catch (Exception e) { Log.UserError("Could not restore placeholder node " + placeholder.Id, e); }
+				}
+			}
+		}
 
 		protected override NodeTypeMeta CreateMeta(string id, Type type) {
 			var meta = base.CreateMeta(id, type);
@@ -57,16 +81,19 @@ namespace Warudo.Core.Data {
 			if (attribute == null) {
 				throw new Exception($"Node type {type.FriendlyFullName()} does not have an ID");
 			}
-			var meta = base.RegisterType(attribute.Id, type);
+			var meta = RegisterType(attribute.Id, type);
 			return meta;
 		}
 
 		public override void UnregisterType(string id) {
 			if (Context.OpenedScene != null) {
 				foreach (var (_, graph) in Context.OpenedScene.GetGraphs()) {
-					var currentNodes = graph.GetNodes().Values.Where(it => it.Type.NodeType.id == id).ToList();
+					var currentNodes = graph.GetNodes().Values.Where(it => it.Type.NodeType.id == id
+						|| it is PlaceholderNode placeholder && placeholder.OriginalTypeId == id).ToList();
 					foreach (var currentNode in currentNodes) {
-						graph.RemoveNode(currentNode.Id);
+						var snapshot = currentNode.Serialize();
+						SerializedEntitySnapshot.StripTransient(snapshot);
+						graph.ReplaceNode(currentNode, snapshot, true);
 					}
 				}
 			}
@@ -74,7 +101,7 @@ namespace Warudo.Core.Data {
 		}
 
 		public override NodeTypeCheckpoint CreateTypeCheckpoint(string id) {
-			var checkpoint = new NodeTypeCheckpoint {Id = id};
+			var checkpoint = new NodeTypeCheckpoint {Id = id, EntitiesRetained = true};
             
 			if (Context.OpenedScene != null) {
 				foreach (var (graphId, graph) in Context.OpenedScene.GetGraphs()) {
@@ -107,21 +134,27 @@ namespace Warudo.Core.Data {
 
 		public override void RestoreTypeCheckpoint(NodeTypeCheckpoint checkpoint) {
 			if (Context.OpenedScene == null) return;
+			var recreated = new HashSet<(Guid graphId, Guid nodeId)>();
 			// Restore nodes and connections
 			foreach (var (graphId, serializedNode, _, _) in checkpoint.SerializedNodes) {
 				var graph = Context.OpenedScene.GetGraph(graphId);
 				if (graph == null) continue;
 				try {
-					var node = CreateEntity(serializedNode.typeId);
-					node.Store(serializedNode.id);
-					graph.AddNode(node);
-
-					node.Deserialize(serializedNode);
+					// The live placeholder is authoritative: it may have been moved,
+					// rewired or deleted since the checkpoint was captured.
+					var existing = graph.GetNode(serializedNode.id);
+					if (existing is PlaceholderNode placeholder && IsTypeRegistered(placeholder.OriginalTypeId)) {
+						graph.ReplaceNode(placeholder, placeholder.GetSnapshot());
+					} else if (existing == null && !checkpoint.EntitiesRetained) {
+						graph.DeserializeNode(serializedNode);
+						recreated.Add((graphId, serializedNode.id));
+					}
 				} catch (Exception e) {
 					Log.UserError($"Could not deserialize node {serializedNode.id}. Skipping", e);
 				}
 			}
 			foreach (var (graphId, serializedNode, _, _) in checkpoint.SerializedNodes) {
+				if (!recreated.Contains((graphId, serializedNode.id))) continue;
 				var graph = Context.OpenedScene.GetGraph(graphId);
 				if (graph == null) continue;
 				try {
@@ -136,6 +169,7 @@ namespace Warudo.Core.Data {
 				var graph = Context.OpenedScene.GetGraph(graphId);
 				if (graph == null) continue;
 				foreach (var flowConnection in flowConnections) {
+					if (!recreated.Contains((graphId, flowConnection.inputNode)) && !recreated.Contains((graphId, flowConnection.outputNode))) continue;
 					try {
 						graph.DeserializeFlowConnection(flowConnection);
 					} catch (Exception e) {
@@ -143,6 +177,7 @@ namespace Warudo.Core.Data {
 					}
 				}
 				foreach (var dataConnection in dataConnections) {
+					if (!recreated.Contains((graphId, dataConnection.inputNode)) && !recreated.Contains((graphId, dataConnection.outputNode))) continue;
 					try {
 						graph.DeserializeDataConnection(dataConnection);
 					} catch (Exception e) {
@@ -177,6 +212,7 @@ namespace Warudo.Core.Data {
 	}
 	
 	public class NodeTypeCheckpoint : TypeCheckpoint {
+		public bool EntitiesRetained;
 		public List<(Guid graphId, SerializedNode serializedNode, List<SerializedFlowConnection> flowConnections, List<SerializedDataConnection> dataConnections)> SerializedNodes = new();
 	}
 }

@@ -8,6 +8,7 @@ namespace Warudo.Core.Utils
     {
         public static void SafeOpenURL(string url)
         {
+#if UNITY_EDITOR
             if (string.IsNullOrEmpty(url))
             {
                 Debug.LogWarning("Attempted to open an empty or null URL.");
@@ -45,6 +46,7 @@ namespace Warudo.Core.Utils
                     return;
                 }
             }
+#endif
             Application.OpenURL(url);
         }
     }

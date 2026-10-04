@@ -1,6 +1,7 @@
 using Cysharp.Threading.Tasks;
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
@@ -17,5 +18,6 @@ namespace Warudo.Plugins.Core
 {
     public partial class CorePlugin
     {
+        public static bool LinuxClientReady { get; set; }
     }
 }

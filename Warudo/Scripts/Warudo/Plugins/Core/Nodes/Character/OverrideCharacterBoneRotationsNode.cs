@@ -13,6 +13,7 @@ namespace Warudo.Plugins.Core.Nodes
         public CharacterAsset Character;
         public Quaternion[] BoneLocalRotations;
         public float[] BoneRotationWeights;
+        public CharacterBoneLayer BoneLayer = CharacterBoneLayer.Normalized;
         public bool Immediate = false;
         public Continuation Enter()
         {

@@ -18,6 +18,7 @@ namespace Warudo.Core.Server {
         private readonly List<(Entity, string)> queuedEntityDataInputProperties = new();
         private readonly List<(IFlowEntity, string)> queuedEntityDataOutputProperties = new();
         private readonly List<(Entity, string)> queuedEntityTriggerProperties = new();
+        private readonly HashSet<Guid> queuedEntityLayoutInvalidations = new();
         private readonly List<ICollapsibleStructuredData> queuedStructuredDataHeaders = new();
         private readonly List<Asset> queuedAssetActiveStates = new();
         private readonly Dictionary<string, string> queuedMessages = new();
@@ -26,30 +27,39 @@ namespace Warudo.Core.Server {
 
         public void QueueEntity(ISerializableEntity entity) {
             queuedEntities.Add(entity);
+            if (entity is Entity e) {
+                queuedEntityLayoutInvalidations.Add(e.Id);
+            }
         }
 
         public void QueueEntityDataInput(Entity entity, string dataPort) {
             queuedEntityData.Add((entity, dataPort));
+            queuedEntityLayoutInvalidations.Add(entity.Id);
         }
         
         public void QueueEntityDataInputProperties(Entity entity, string dataPort) {
             queuedEntityDataInputProperties.Add((entity, dataPort));
+            queuedEntityLayoutInvalidations.Add(entity.Id);
         }
         
         public void QueueEntityDataOutputProperties(IFlowEntity entity, string dataPort) {
             queuedEntityDataOutputProperties.Add((entity, dataPort));
+            queuedEntityLayoutInvalidations.Add(entity.Id);
         }
         
         public void QueueEntityTriggerProperties(Entity entity, string triggerPort) {
             queuedEntityTriggerProperties.Add((entity, triggerPort));
+            queuedEntityLayoutInvalidations.Add(entity.Id);
         }
         
         public void QueueEntityHeader(ICollapsibleStructuredData structuredData) {
             queuedStructuredDataHeaders.Add(structuredData);
+            queuedEntityLayoutInvalidations.Add(structuredData.Id);
         }
         
         public void QueueAssetActiveState(Asset asset) {
             queuedAssetActiveStates.Add(asset);
+            queuedEntityLayoutInvalidations.Add(asset.Id);
         }
         
         public void QueueMessage(string message, string data) {
@@ -68,6 +78,9 @@ namespace Warudo.Core.Server {
             queuedEntities.Clear();
             queuedEntityData.Clear();
             queuedEntityDataInputProperties.Clear();
+            queuedEntityDataOutputProperties.Clear();
+            queuedEntityTriggerProperties.Clear();
+            queuedEntityLayoutInvalidations.Clear();
             queuedStructuredDataHeaders.Clear();
             queuedAssetActiveStates.Clear();
             queuedMessages.Clear();
@@ -152,6 +165,11 @@ namespace Warudo.Core.Server {
                 portValues[portKey] = port.Properties.Clone();
             }
             queuedEntityTriggerProperties.Clear();
+
+            foreach (var entityId in queuedEntityLayoutInvalidations) {
+                frameUpdate.entityLayoutInvalidations.Add(entityId);
+            }
+            queuedEntityLayoutInvalidations.Clear();
             
             foreach (var entity in queuedStructuredDataHeaders) {
                 frameUpdate.structuredDataHeaders[entity.Id] = entity.GetHeader();
@@ -173,6 +191,7 @@ namespace Warudo.Core.Server {
                 && frameUpdate.entityDataInputProperties.Count == 0
                 && frameUpdate.entityDataOutputProperties.Count == 0
                 && frameUpdate.entityTriggerProperties.Count == 0
+                && frameUpdate.entityLayoutInvalidations.Count == 0
                 && frameUpdate.structuredDataHeaders.Count == 0
                 && frameUpdate.assetActiveStates.Count == 0
                 && frameUpdate.messages.Count == 0) {
@@ -186,6 +205,7 @@ namespace Warudo.Core.Server {
             frameUpdate.entityDataInputProperties.Clear();
             frameUpdate.entityDataOutputProperties.Clear();
             frameUpdate.entityTriggerProperties.Clear();
+            frameUpdate.entityLayoutInvalidations.Clear();
             frameUpdate.structuredDataHeaders.Clear();
             frameUpdate.assetActiveStates.Clear();
             frameUpdate.messages.Clear();
@@ -199,6 +219,7 @@ namespace Warudo.Core.Server {
         public readonly Dictionary<Guid, Dictionary<string, DataInputProperties>> entityDataInputProperties = new();
         public readonly Dictionary<Guid, Dictionary<string, DataOutputProperties>> entityDataOutputProperties = new();
         public readonly Dictionary<Guid, Dictionary<string, TriggerProperties>> entityTriggerProperties = new();
+        public readonly HashSet<Guid> entityLayoutInvalidations = new();
         public readonly Dictionary<Guid, string> structuredDataHeaders = new();
         public readonly Dictionary<Guid, bool> assetActiveStates = new();
         public readonly Dictionary<string, string> messages = new();

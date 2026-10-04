@@ -6,6 +6,7 @@ using Newtonsoft.Json;
 using UnityEngine;
 using Vexe.Fast.Reflection;
 using Warudo.Core.Events;
+using Warudo.Core.Data;
 using Warudo.Core.Graphs;
 using Warudo.Core.Localization;
 using Warudo.Core.Plugins;
@@ -89,6 +90,7 @@ namespace Warudo.Core.Scenes {
         
         public Asset AddAssetToGroup(string typeId, string group) {
             var typeMeta = Context.AssetTypeRegistry.GetTypeMeta(typeId);
+            if (typeMeta?.Type == typeof(UnknownAsset)) throw new UserException("Placeholder assets require serialized asset data");
             if (typeMeta.AssetType.singleton && assetList.Any(it => it.Type.AssetType.id == typeId)) {
                 throw new Exception($"{typeMeta.Type.Name} is singleton, and an asset already exists");
             }
@@ -108,6 +110,7 @@ namespace Warudo.Core.Scenes {
 
         public T AddAssetToGroup<T>(string group) where T : Asset {
             var typeMeta = Context.AssetTypeRegistry.GetTypeMeta(typeof(T));
+            if (typeof(T) == typeof(UnknownAsset)) throw new UserException("Placeholder assets require serialized asset data");
             if (typeMeta.AssetType.singleton && assetList.Any(it => it.Type.AssetType.id == typeMeta.AssetType.id)) {
                 throw new Exception($"{typeMeta.Type.Name} is singleton, and an asset already exists");
             }
@@ -179,6 +182,71 @@ namespace Warudo.Core.Scenes {
 
         public Asset GetAsset(Guid id) {
             return assetMap.GetValueOrDefault(id);
+        }
+
+        internal IEnumerable<(Entity Entity, DataInputPort Port)> GetSceneDataInputs() {
+            var visited = new HashSet<Guid>();
+            var roots = assetList.Cast<Entity>().Concat(graphList.SelectMany(graph => graph.GetNodes().Values))
+                .Concat(Context.PluginManager.GetPlugins());
+            foreach (var root in roots) foreach (var entry in Visit(root)) yield return entry;
+
+            IEnumerable<(Entity Entity, DataInputPort Port)> Visit(Entity entity) {
+                if (!visited.Add(entity.Id)) yield break;
+                foreach (var port in entity.DataInputPortCollection.GetPorts().Values.ToList()) {
+                    yield return (entity, port);
+                    var value = port.Getter();
+                    if (value is StructuredData sd) {
+                        foreach (var entry in Visit(sd)) yield return entry;
+                    } else if (value is StructuredData[] array) {
+                        foreach (var element in array.Where(it => it != null)) foreach (var entry in Visit(element)) yield return entry;
+                    }
+                }
+            }
+        }
+
+        internal Asset ReplaceAsset(Asset current, SerializedAsset snapshot, bool forceUnknown = false) {
+            if (GetAsset(current.Id) != current || snapshot.id != current.Id) throw new ArgumentException("Asset replacement must retain its scene and ID");
+            var referrers = GetSceneDataInputs().Where(it => it.Entity != current &&
+                (it.Port.Getter() is Asset asset && asset.Id == current.Id
+                 || it.Port.Getter() is Array array && array.Cast<object>().OfType<Asset>().Any(asset => asset.Id == current.Id)))
+                .Select(it => (it.Entity, it.Port, Value: it.Port.SerializeValue())).ToList();
+            // Create the replacement before destroying the old asset, so a failed
+            // constructor cannot remove the only retained copy of its settings.
+            var replacement = forceUnknown ? Context.AssetTypeRegistry.CreateEntity(UnknownAsset.TypeId)
+                : Context.AssetTypeRegistry.CreateEntityOrUnknown(snapshot.typeId, UnknownAsset.TypeId);
+            var index = assetList.IndexOf(current);
+            current.DestroySafely();
+            replacement.Scene = this;
+            replacement.Store(snapshot.id);
+            assetMap[snapshot.id] = replacement;
+            assetList[index] = replacement;
+            try {
+                replacement.Deserialize(SerializedEntitySnapshot.Clone(snapshot));
+                replacement.UpdateErrorRecoveryTrigger();
+            } catch (Exception e) {
+                Log.UserError("Could not restore asset " + snapshot.id + "; retaining its original settings", e);
+                replacement.DestroySafely();
+                replacement = Context.AssetTypeRegistry.CreateEntity(UnknownAsset.TypeId);
+                replacement.Scene = this;
+                replacement.Deserialize(snapshot);
+                assetMap[snapshot.id] = replacement;
+                assetList[index] = replacement;
+            }
+            foreach (var (entity, port, value) in referrers) {
+                if (!entity.Created) continue;
+                port.SetSerializedValue(value, this, entity);
+                entity.Broadcast();
+            }
+            Context.Service?.BroadcastOpenedScene();
+            return replacement;
+        }
+
+        internal void RestorePreservedAssetReferences() {
+            foreach (var (entity, port) in GetSceneDataInputs().ToList()) {
+                if (port.PreservedSerializedValue == null || port.Type.GetKind() is not (TypeKind.Asset or TypeKind.AssetArray)) continue;
+                try { port.SetSerializedValue(port.PreservedSerializedValue, this, entity); }
+                catch (Exception e) { Log.UserError("Could not restore asset reference at " + entity.Id + "::" + port.Key, e); }
+            }
         }
 
         public void RemoveAsset(Guid id) {
@@ -307,9 +375,7 @@ namespace Warudo.Core.Scenes {
                 appVersion = Application.version,
                 assets = assetList.Select(it => it.Serialize()).Select(it => {
                     if (!includeTransientData) {
-                        it.dataInputs = it.dataInputs
-                            .Where(d => !d.Value.properties.transient)
-                            .ToDictionary(kv => kv.Key, kv => kv.Value);
+                        SerializedEntitySnapshot.StripTransient(it);
                     }
                     return it;
                 }).ToList(),
@@ -317,9 +383,7 @@ namespace Warudo.Core.Scenes {
                     if (!includeTransientData) {
                         it.nodes = it.nodes
                             .Select(n => {
-                                n.Value.dataInputs = n.Value.dataInputs
-                                    .Where(d => !d.Value.properties.transient)
-                                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+                                SerializedEntitySnapshot.StripTransient(n.Value);
                                 return n;
                             })
                             .ToDictionary(kv => kv.Key, kv => kv.Value);
@@ -365,9 +429,10 @@ namespace Warudo.Core.Scenes {
             // Prevent circular references by serializing without data first
             foreach (var serializedAsset in assets) {
                 try {
-                    var asset = Context.AssetTypeRegistry.CreateEntity(serializedAsset.typeId);
+                    var asset = Context.AssetTypeRegistry.CreateEntityOrUnknown(serializedAsset.typeId, UnknownAsset.TypeId);
                     asset.Scene = this;
                     asset.Store(serializedAsset.id);
+                    if (asset is UnknownAsset) asset.Deserialize(serializedAsset);
                     AddAsset(asset);
                 } catch (Exception e) {
                     Log.UserError($"Could not create asset {serializedAsset.name} ({serializedAsset.id}). Skipping", e);
@@ -378,6 +443,7 @@ namespace Warudo.Core.Scenes {
                 if (GetAsset(serializedAsset.id) == null) continue;
                 try {
                     asset.Deserialize(serializedAsset);
+                    asset.UpdateErrorRecoveryTrigger();
                 } catch (Exception e) {
                     Log.UserError($"Could not deserialize data for asset {serializedAsset.name} ({serializedAsset.id})", e);
                 }
@@ -408,8 +474,10 @@ namespace Warudo.Core.Scenes {
                     if (node == null) continue;
                     try {
                         node.OnAllNodesDeserialized(serializedNode);
+                        if (node is not PlaceholderNode && node.FailedSdPorts.Count > 0) graph.PreserveErrorNode(node, serializedNode);
                     } catch (Exception e) {
                         Log.UserError($"An error occurred while calling OnAllNodesDeserialized for node {node.Name} ({node.Id})", e);
+                        if (node is not PlaceholderNode) graph.PreserveErrorNode(node, serializedNode);
                     }
                 }
                 graph.DeserializeConnections(serializedGraph);

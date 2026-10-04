@@ -75,6 +75,7 @@ namespace Warudo.Core.Data {
                 // Aggregate asset type checkpoints into one single checkpoint, then restore, because assets may refer to each other
                 var aggregateAssetTypeCheckpoint = new AssetTypeCheckpoint();
                 foreach (var assetTypeCheckpoint in checkpoint.AssetTypeCheckpoints) {
+                    aggregateAssetTypeCheckpoint.EntitiesRetained |= assetTypeCheckpoint.EntitiesRetained;
                     aggregateAssetTypeCheckpoint.SerializedAssets.AddRange(assetTypeCheckpoint.SerializedAssets);
                     aggregateAssetTypeCheckpoint.AssetReferrers.AddRange(assetTypeCheckpoint.AssetReferrers);
                 }
@@ -83,6 +84,7 @@ namespace Warudo.Core.Data {
                 // Similarly, aggregate node type checkpoints into one single checkpoint, then restore
                 var aggregateNodeTypeCheckpoint = new NodeTypeCheckpoint();
                 foreach (var nodeTypeCheckpoint in checkpoint.NodeTypeCheckpoints) {
+                    aggregateNodeTypeCheckpoint.EntitiesRetained |= nodeTypeCheckpoint.EntitiesRetained;
                     aggregateNodeTypeCheckpoint.SerializedNodes.AddRange(nodeTypeCheckpoint.SerializedNodes);
                 }
 
@@ -91,6 +93,7 @@ namespace Warudo.Core.Data {
                 // Restore node referrers that depend on replaced asset types last
                 aggregateAssetTypeCheckpoint = new AssetTypeCheckpoint();
                 foreach (var assetTypeCheckpoint in checkpoint.AssetTypeCheckpoints) {
+                    aggregateAssetTypeCheckpoint.EntitiesRetained |= assetTypeCheckpoint.EntitiesRetained;
                     aggregateAssetTypeCheckpoint.NodeReferrers.AddRange(assetTypeCheckpoint.NodeReferrers);
                 }
 

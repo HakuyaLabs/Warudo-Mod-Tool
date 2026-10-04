@@ -1,3 +1,6 @@
+using EmbedIO.Sessions;
+using EmbedIO.Utilities;
+using System.Linq;
 using Warudo.Plugins.Core.Events;
 using WebSocketSharp;
 using WebSocketSharp.Server;

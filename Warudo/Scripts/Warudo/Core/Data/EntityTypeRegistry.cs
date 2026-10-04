@@ -106,8 +106,14 @@ namespace Warudo.Core.Data {
                 throw new Exception($"Cannot find {typeof(T).Name} type with ID {id}. Is it registered?");
             }
             var entity = (T) meta.Type.DelegateForCtor().Invoke(Array.Empty<object>());
-            initializer?.Invoke(entity);
-            entity.Create();
+            try {
+                initializer?.Invoke(entity);
+                entity.Create();
+            } catch {
+                try { entity.AbortCreation(); }
+                catch (Exception e) { Log.Error("Could not clean up partially created " + meta.Type.Name, e); }
+                throw;
+            }
             // Debug.Log($"Created entity {typeof(T).Name} with ID {id}");
             return entity;
         }
@@ -122,6 +128,10 @@ namespace Warudo.Core.Data {
 
         public virtual void Dispose() {
             RegisteredTypes.Clear();
+        }
+
+        public T CreateEntityOrUnknown(string id, string unknownTypeId) {
+            return CreateEntity(IsTypeRegistered(id) ? id : unknownTypeId);
         }
         
         public virtual TMeta GetTypeMeta(Type type) => RegisteredTypes.Values.FirstOrDefault(it => it.Type == type);

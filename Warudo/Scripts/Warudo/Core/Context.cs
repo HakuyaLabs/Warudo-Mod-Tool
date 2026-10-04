@@ -11,10 +11,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UMod.Shared;
 using Warudo.Core.Attributes;
 using Warudo.Core.Data;
 using Warudo.Core.Events;
@@ -40,10 +42,16 @@ using WebApiController = Warudo.Core.Server.WebApiController;
 
 namespace Warudo.Core {
     public class Context : SingletonMonoBehavior<Context> {
+
+        // Gives native media components a chance to stop before plugin and server teardown.
+        public event Action BeforeDispose;
         
         public static bool IsDestroyed => Instance == null;
         
         public static PluginManager PluginManager => Instance.pluginManager;
+
+
+        
         public static ResourceManager ResourceManager => Instance.resourceManager;
         public static PersistentDataManager PersistentDataManager => Instance.persistentDataManager;
         public static SceneManager SceneManager => Instance.sceneManager;
@@ -51,6 +59,7 @@ namespace Warudo.Core {
         public static LocalizationManager LocalizationManager => Instance.localizationManager;
         public static RenderingPipelineManager RenderingPipelineManager => Instance.renderingPipelineManager;
         public static LicenseManager LicenseManager => Instance.licenseManager;
+        public static TemporaryControlPointManager TemporaryControlPointManager => Instance.temporaryControlPointManager;
 
         public static TypeRegistry TypeRegistry => Instance.typeRegistry; 
 
@@ -69,9 +78,14 @@ namespace Warudo.Core {
         public static Scene OpenedScene => Instance.openedScene;
         
         public static Service Service => Instance != null ? Instance.service : null;
+        public static ExternalCallbackManager ExternalCallbackManager => Instance != null ? Instance.externalCallbackManager : null;
         public static ServiceMessageQueue ServiceMessageQueue => Instance.serviceMessageQueue;
 
         private readonly PluginManager pluginManager = new();
+
+
+               
+        [SerializeField] private ModSecurityRestrictions pluginRiskSecurityRestrictions;
         private readonly ResourceManager resourceManager = new();
         private readonly PersistentDataManager persistentDataManager = new();
         private readonly SceneManager sceneManager = new();
@@ -79,6 +93,7 @@ namespace Warudo.Core {
         private readonly LocalizationManager localizationManager = new();
         private readonly RenderingPipelineManager renderingPipelineManager = new();
         private readonly LicenseManager licenseManager = new();
+        private readonly TemporaryControlPointManager temporaryControlPointManager = new();
 
         private readonly TypeRegistry typeRegistry = new();
         private readonly NodeTypeRegistry nodeTypeRegistry = new();
@@ -90,6 +105,7 @@ namespace Warudo.Core {
         private readonly EventBus eventBus = new();
         private readonly PluginRouter pluginRouter = new();
         private readonly Toast toast = new();
+        private readonly ExternalCallbackManager externalCallbackManager = new();
 
         private Scene openedScene;
 
@@ -115,11 +131,12 @@ namespace Warudo.Core {
             if (Application.isEditor || (commandLines.Any(it => it.ToLowerInvariant() == "--enable-webrtc")))
             {
                 Debug.Log($"WARNING: WebView is enabled WebRTC");
-            }
+            } 
         }
 
         public async UniTask InitializeComponents() {
             await typeRegistry.Initialize();
+
             toast.Initialize();
             renderingPipelineManager.Initialize();
             ModReferences.Initialize();
@@ -162,6 +179,7 @@ namespace Warudo.Core {
         }
 
         public async UniTask OpenScene(SerializedScene serializedScene) {
+            temporaryControlPointManager.Reset();
             openedScene?.Destroy();
             PluginManager.GetPlugins().ForEach(it => {
                 try {
@@ -195,9 +213,18 @@ namespace Warudo.Core {
             service?.BroadcastOpenedScene();
         }
 
-        protected override void Dispose() {
+        protected override void Dispose()
+        {
+            try {
+                BeforeDispose?.Invoke();
+            } catch (Exception e) {
+                Log.Error("Error while stopping media before context disposal", e);
+            }
+
+            externalCallbackManager.Dispose();
             StopServer();
             openedScene?.Destroy();
+            temporaryControlPointManager.Dispose();
             pluginManager.Dispose();
 
             resourceManager.Dispose();
@@ -235,6 +262,7 @@ namespace Warudo.Core {
 
             foreach (var it in PluginManager.GetPlugins()) it.PostUpdate();
             OpenedScene.PostUpdate();
+            temporaryControlPointManager.Update();
             
             deadStructuredData.Clear();
             foreach (var kv in EntityStore.GetStructuredDataEntities()) {
@@ -359,6 +387,8 @@ namespace Warudo.Core {
                 .WithWebApi("/api", serializer: UseNewtonsoftJsonSerializer, (WebApiModule m) => m
                     .WithController<WebApiController>()
                     .HandleUnhandledException(UnhandledExceptionResponse))
+                .WithWebApi("/callback", serializer: UseNewtonsoftJsonSerializer, (WebApiModule m) => m
+                    .WithController<ExternalCallbackManager.WebCallbackController>())
                 .WithModule(new MapAndProtectStaticFileNameModule("/"))
                 .WithStaticFolder("/", Application.streamingAssetsPath, true, m => m
                     .WithContentCaching(true)) // Add static files after other modules to avoid conflicts

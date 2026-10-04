@@ -53,6 +53,7 @@ namespace Warudo.Core.Graphs {
             }
             
             Store(serialized.id);
+            FailedSdPorts.Clear();
 
             if (serialized.version != GetVersion()) {
                 Debug.Log($"Node {GetType().Name} was serialized with version {serialized.version} but current version is {GetVersion()}. There may be compatibility issues.");

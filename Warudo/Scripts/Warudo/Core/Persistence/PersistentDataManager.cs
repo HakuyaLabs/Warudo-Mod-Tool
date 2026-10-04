@@ -19,7 +19,9 @@ namespace Warudo.Core.Persistence {
         
         public IEnumerable<FileEntry> GetFileEntries(string relativePath, string searchPattern = "*.*", Func<string, bool> predicate = null) {
             CheckPathAccess(Assembly.GetCallingAssembly(), relativePath);
-            var e = Directory.EnumerateFiles(basePath + relativePath + Path.DirectorySeparatorChar, searchPattern, SearchOption.AllDirectories);
+            var searchPath = basePath + relativePath + Path.DirectorySeparatorChar;
+            if (!Directory.Exists(searchPath)) return Enumerable.Empty<FileEntry>();
+            var e = Directory.EnumerateFiles(searchPath, searchPattern, SearchOption.AllDirectories);
             if (predicate != null) e = e.Where(predicate);
             return e.Select(it => new FileEntry {
                 path = Path.GetRelativePath(basePath, it).Replace('\\', '/'),

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Cysharp.Threading.Tasks;
 using Warudo.Core.Scenes;
@@ -23,10 +24,7 @@ namespace Warudo.Core {
 
                 foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies()) {
                     try {
-                        foreach (var type in assembly.GetTypes()) {
-                            if (type.FullName == null) continue;
-                            knownTypes[type.FullName] = type;
-                        }
+                        AddAssemblyTypes(assembly);
                     } catch {
                         // ignored
                     }
@@ -38,7 +36,26 @@ namespace Warudo.Core {
 
         public void AddType(Type type) {
             if (type.FullName == null) throw new Exception("Type has no name");
+
+            if (knownTypes.TryGetValue(type.FullName, out var existingType) && existingType != type) {
+                enumTypes.Remove(existingType);
+            }
+
             knownTypes[type.FullName] = type;
+        }
+
+        public void AddAssemblyTypes(Assembly assembly) {
+            Type[] types;
+            try {
+                types = assembly.GetTypes();
+            } catch (ReflectionTypeLoadException e) {
+                types = e.Types.Where(it => it != null).ToArray();
+            }
+
+            foreach (var type in types) {
+                if (type?.FullName == null) continue;
+                AddType(type);
+            }
         }
 
         public Type GetType(string fullName) {

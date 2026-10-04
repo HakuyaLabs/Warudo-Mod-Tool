@@ -10,6 +10,7 @@ using UMod.ModTools.Export;
 using UMod.Shared;
 using UnityEditor;
 using UnityEngine;
+using UniVRM10;
 using VRM;
 using Warudo.Plugins.Core.Assets.Character;
 
@@ -22,6 +23,7 @@ namespace Warudo.Editor {
 
         private bool hasAnimator;
         private bool normalizedBones;
+        private Vrm10Instance vrm10Instance;
         
         private void OnEnable() {
             settings = ModScriptableAsset<ExportSettings>.Active.Load();
@@ -32,6 +34,7 @@ namespace Warudo.Editor {
         private void UpdateSelectedCharacter() {
             hasAnimator = false;
             normalizedBones = false;
+            vrm10Instance = null;
             
             selectedCharacter = Selection.activeGameObject;
             if (selectedCharacter == null) {
@@ -43,6 +46,8 @@ namespace Warudo.Editor {
             if (!hasAnimator) {
                 return;
             }
+
+            vrm10Instance = selectedCharacter.GetComponentInChildren<Vrm10Instance>(true);
 
             normalizedBones = true;
             for (var i = 0; i < (int) HumanBodyBones.LastBone; i++) {
@@ -72,7 +77,13 @@ namespace Warudo.Editor {
                 EditorGUILayout.LabelField("Please select the character GameObject in scene.");
             } else {
                 EditorGUILayout.LabelField("Has animator: " + hasAnimator);
-                EditorGUILayout.LabelField("Normalized bones: " + normalizedBones);
+                if (vrm10Instance != null) {
+                    EditorGUILayout.LabelField("Character format: VRM 1.x");
+                    EditorGUILayout.LabelField("Rig backend: Control Rig");
+                    EditorGUILayout.LabelField("Normalized bones: Not required for VRM 1.x");
+                } else {
+                    EditorGUILayout.LabelField("Normalized bones: " + normalizedBones);
+                }
             }
             if (GUILayout.Button("Setup selected GameObject as character mod")) {
                 SetupCharacter();
@@ -103,13 +114,20 @@ namespace Warudo.Editor {
             selectedCharacter.transform.position = Vector3.zero;
             selectedCharacter.transform.rotation = Quaternion.identity;
 
-            var colliderGroups = selectedCharacter.GetComponentsInChildren<VRMSpringBoneColliderGroup>();
+            var colliderGroups = selectedCharacter.GetComponentsInChildren<VRMSpringBoneColliderGroup>(true);
             var colliderGroupCenters = colliderGroups.ToDictionary(it => it, it => 
                 it.Colliders.Select(c => it.transform.TransformPoint(c.Offset)).ToArray());
-            
-            if (!normalizedBones) {
+
+            var didNormalize = false;
+            if (vrm10Instance != null) {
+                var descriptor = selectedCharacter.GetComponent<CharacterRigDescriptor>();
+                if (descriptor == null) descriptor = selectedCharacter.AddComponent<CharacterRigDescriptor>();
+                descriptor.ConfigureVrm10(vrm10Instance);
+                EditorUtility.SetDirty(descriptor);
+            } else if (!normalizedBones) {
                 var animator = selectedCharacter.GetComponent<Animator>();
                 BoneNormalization.Apply(selectedCharacter.gameObject, animator);
+                didNormalize = true;
                 
                 // Store the created avatars and meshes in the mod directory
                 var avatar = animator.avatar;
@@ -143,7 +161,7 @@ namespace Warudo.Editor {
             }
             PrefabUtility.SaveAsPrefabAssetAndConnect(selectedCharacter, prefabPath, InteractionMode.AutomatedAction);
             
-            if (!normalizedBones) {
+            if (didNormalize) {
 #if MAGICA_CLOTH
                 var updatedMagicaCloth = false;
                 

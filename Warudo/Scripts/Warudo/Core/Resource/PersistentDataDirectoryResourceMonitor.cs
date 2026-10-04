@@ -28,6 +28,7 @@ namespace Warudo.Core.Resource {
         public void Start() {
             LogMessage($"Started monitoring {Path.GetFileName(monitorPath)} ({monitorPath})");
             
+            Directory.CreateDirectory(monitorPath);
             watcher = new FileSystemWatcher(monitorPath);
             watcher.Filter = "*.*";
             watcher.Error += async (sender, e) => {

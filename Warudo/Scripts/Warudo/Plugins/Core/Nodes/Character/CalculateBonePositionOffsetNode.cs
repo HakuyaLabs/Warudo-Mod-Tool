@@ -12,6 +12,7 @@ namespace Warudo.Plugins.Core.Nodes.Character
     {
         public CharacterAsset Character;
         public HumanBodyBones Bone;
+        public CharacterBoneLayer BoneLayer = CharacterBoneLayer.Normalized;
         public Vector3 PositionOffset()
         {
             throw new NotImplementedException();

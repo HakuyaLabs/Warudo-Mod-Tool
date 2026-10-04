@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using DG.Tweening;
 using Warudo.Core.Attributes;
 using Warudo.Core.Data.Models;

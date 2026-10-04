@@ -11,6 +11,7 @@ namespace Warudo.Plugins.Core.Nodes
     public class ResetOverrideCharacterBonesNode : Node
     {
         public CharacterAsset Character;
+        public CharacterBoneLayer BoneLayer = CharacterBoneLayer.Normalized;
         public Continuation Enter()
         {
             throw new NotImplementedException();

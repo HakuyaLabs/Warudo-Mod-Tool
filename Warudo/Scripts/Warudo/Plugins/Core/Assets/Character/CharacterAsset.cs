@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Animancer;
 using Cysharp.Threading.Tasks;
 using DG.Tweening;
@@ -9,8 +8,8 @@ using RootMotion;
 using RootMotion.Dynamics;
 using RootMotion.FinalIK;
 using UnityEngine;
+using UniGLTF.SpringBoneJobs.Blittables;
 using UniVRM10;
-using UniVRM10.FastSpringBones;
 using Vexe.Fast.Reflection;
 using VRM;
 using Warudo.Core.Attributes;
@@ -31,9 +30,11 @@ namespace Warudo.Plugins.Core.Assets.Character
 {
     public sealed partial class CharacterAsset : FromSourceGameObjectAsset, IMeshDataParent
     {
+        public static event Action<CharacterAsset, GameObject> GameObjectLoaded;
         public const string DefaultIdleAnimationUri = "character-animation://resources/Animations/AGIA/01_Idles/AGIA_Idle_generic_01";
         protected override bool UsePreviewGallery => throw new NotImplementedException();
         public bool TrackingEnabled;
+        public string SourceNotNormalizedWarning = "";
         public QuickCalibrationData QuickCalibration;
         public BlueprintNavigationData BlueprintNavigation;
         public partial void SetupTracking();
@@ -92,6 +93,7 @@ namespace Warudo.Plugins.Core.Assets.Character
         public AdditionalBoneOffset[] AdditionalBoneOffsets;
         public class AdditionalBoneOffset : StructuredData, ICollapsibleStructuredData
         {
+            public bool Enabled = true;
             public HumanBodyBones Bone = HumanBodyBones.Head;
             public Vector3 RotationOffset = Vector3.zero;
             public bool ApplyWhileTracked = true;
@@ -186,7 +188,6 @@ namespace Warudo.Plugins.Core.Assets.Character
 
         protected bool HideMagicaCloth2() => throw new NotImplementedException();
         public bool UseVrm10Instances = false;
-        protected bool HideVRMSection() => throw new NotImplementedException();
         public string[] TrackingAssetIds;
         public string[] TrackingGraphIds;
         public string ExpressionKeyBindingGraphId;
@@ -230,6 +231,14 @@ namespace Warudo.Plugins.Core.Assets.Character
 
         public Vector3[] InitialBoneWorldPositions { get; }
 
+        public Vector3[] InitialBoneLocalScales { get; }
+
+        public Vector3[] InitialRawBoneLocalPositions { get; }
+
+        public Vector3[] InitialRawBoneWorldPositions { get; }
+
+        public Vector3[] InitialRawBoneLocalScales { get; }
+
         public MeshUpdater MeshUpdater { get; private set; }
 
         public VRMBlendShapeProxy VRMBlendShapeProxy { get; private set; }
@@ -239,6 +248,8 @@ namespace Warudo.Plugins.Core.Assets.Character
         public bool UpdateVRMSpringBones { get; set; }
 
         public Vrm10Instance Vrm10Instance { get; private set; }
+
+        public CharacterRigDescriptor RigDescriptor { get; private set; }
 
         public Vector3[] EndOfLateUpdateBonePositions { get; }
 
@@ -264,6 +275,14 @@ namespace Warudo.Plugins.Core.Assets.Character
 
         public Quaternion[] EndOfFrameBoneWorldRotations { get; }
 
+        public Vector3[] EndOfFrameRawBonePositions { get; }
+
+        public Quaternion[] EndOfFrameRawBoneRotations { get; }
+
+        public Vector3[] EndOfFrameRawBoneWorldPositions { get; }
+
+        public Quaternion[] EndOfFrameRawBoneWorldRotations { get; }
+
         public Vector3 AnimationRootPosition { get; private set; }
 
         public Quaternion AnimationRootRotation { get; private set; }
@@ -276,11 +295,44 @@ namespace Warudo.Plugins.Core.Assets.Character
 
         public Dictionary<HumanBodyBones, Transform> HumanBodyBoneToBodyTransforms { get; }
 
+        public Dictionary<HumanBodyBones, Transform> ModelHumanBodyBoneToBodyTransforms { get; }
+
         public Dictionary<Transform, HumanBodyBones> BoneTransformToHumanBodyBones { get; }
 
         public Vector3[] PendulumPhysicsEulerAngles { get; }
 
         public float DisableTemporaryRagdollTime { get; set; }
+
+        public bool UsesVrm10ControlRig => throw new NotImplementedException();
+        public Transform GetBoneTransform(HumanBodyBones bone, CharacterBoneLayer layer = CharacterBoneLayer.Normalized)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetBoneScale(HumanBodyBones bone, CharacterBoneLayer layer, Vector3 scale)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetRawBoneRotationOverrides(Quaternion[] rotations, float[] weights)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetRawBonePositionOverrides(Vector3[] positions, float[] weights)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetRawBoneRotationOffsets(Quaternion[] offsets)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ResetRawBoneOverrides()
+        {
+            throw new NotImplementedException();
+        }
 
         public void RevertBoneToAnimationNextFrame(HumanBodyBones bone, float amount = 1f)
         {

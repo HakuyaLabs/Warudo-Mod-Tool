@@ -10,6 +10,7 @@ using Warudo.Core.Rendering;
 using Warudo.Core.Scenes;
 using Warudo.Core.Utils;
 using Warudo.Plugins.Core.Utils;
+using Warudo.Plugins.Core.Assets.Cinematography;
 using Context = Warudo.Core.Context;
 using System;
 using Object = UnityEngine.Object;
@@ -43,6 +44,7 @@ namespace Warudo.Plugins.Core
         }
 
         public Camera RenderTextureCamera => throw new NotImplementedException();
+        public RectTransform ProgramImageRectTransform => throw new NotImplementedException();
         public void RegisterCamera(Asset asset, Camera camera)
         {
             throw new NotImplementedException();

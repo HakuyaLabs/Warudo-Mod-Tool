@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -518,6 +518,7 @@ namespace Warudo.Core.Server {
             if (asset == null) throw new Exception($"Asset {assetId} does not exist");
 
             var serializedAsset = asset.Serialize();
+            SerializedEntitySnapshot.StripTransient(serializedAsset);
             serializedAsset.id = Guid.NewGuid();
             
             var duplicatedAsset = Scene.DeserializeAsset(serializedAsset);
@@ -603,7 +604,9 @@ namespace Warudo.Core.Server {
             if (asset == null) throw new Exception($"Asset {assetId} does not exist");
             
             var serializedAsset = asset.Serialize();
-            Respond("exportAsset:" + assetId, JsonConvert.SerializeObject(new ReducedSerializedAsset(serializedAsset)));
+            var preserve = serializedAsset.placeholderKind != null;
+            SerializedEntitySnapshot.StripTransient(serializedAsset);
+            Respond("exportAsset:" + assetId, JsonConvert.SerializeObject(preserve ? (object) serializedAsset : new ReducedSerializedAsset(serializedAsset)));
         }
 
         public void AddGraph() {
@@ -658,6 +661,7 @@ namespace Warudo.Core.Server {
 
             var serializedGraph = graph.Serialize();
             serializedGraph.id = Guid.NewGuid();
+            foreach (var node in serializedGraph.nodes.Values) SerializedEntitySnapshot.StripTransient(node);
             
             // Change IDs of nodes
             var duplicatedNodes = new Dictionary<Guid, SerializedNode>();
@@ -912,8 +916,9 @@ namespace Warudo.Core.Server {
             var graph = Scene.GetGraph(graphId);
             if (graph == null) throw new Exception($"Graph {graphId} does not exist");
             
-            var serializedGraph = graph.Serialize();
-            Respond("exportGraph:" + graphId, JsonConvert.SerializeObject(new ReducedSerializedGraph(serializedGraph)));
+            var preserve = graph.GetNodes().Values.Any(it => it is PlaceholderNode);
+            var serializedGraph = graph.Serialize(false);
+            Respond("exportGraph:" + graphId, JsonConvert.SerializeObject(preserve ? (object) serializedGraph : new ReducedSerializedGraph(serializedGraph)));
         }
         
         public void InvokeFlowAtInput(Guid graphId, Guid nodeId, string inputPortKey) {
@@ -1007,6 +1012,7 @@ namespace Warudo.Core.Server {
             }
 
             Core.Context.EventBus.Broadcast(new ClientConnectedEvent(MostRecentClientId));
+
         }
         
         public void SendPluginMessage(string pluginId, string action, string payload) {
@@ -1094,6 +1100,9 @@ namespace Warudo.Core.Server {
                         return localizedTriggerProperties;
                     })));
             }
+            if (update.entityLayoutInvalidations.Count > 0) {
+                jObject["entityLayoutInvalidations"] = JToken.FromObject(update.entityLayoutInvalidations);
+            }
             if (update.structuredDataHeaders.Count > 0) {
                 jObject["structuredDataHeaders"] = JToken.FromObject(update.structuredDataHeaders
                     .ToDictionary(e => e.Key, e => e.Value.Localized()));
@@ -1137,6 +1146,14 @@ namespace Warudo.Core.Server {
 
         public void BroadcastNodeTypeList(SerializedNodeTypeList nodeTypeList) {
             Broadcast("nodeTypeList", nodeTypeList);
+        }
+
+        public void BroadcastPluginModsChanged(string id) {
+            Broadcast("modsChanged", new { id });
+        }
+
+        public void SendPluginModsChanged(string clientId) {
+            SendToClient(clientId, "modsChanged", new { id = (string) null });
         }
 
         public void BroadcastActiveConnections(Guid graphId, string flow) {
