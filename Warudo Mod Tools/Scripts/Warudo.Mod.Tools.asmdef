@@ -1,0 +1,29 @@
+{
+    "name": "Warudo.Mod.Tools",
+    "rootNamespace": "",
+    "references": [
+        "VRM",
+        "UniVRM.Editor",
+        "MToon",
+        "MToon.Editor",
+        "VRM10",
+        "VRM10.Editor",
+        "VRM10.MToon10",
+        "VRM10.MToon10.Editor",
+        "Warudo.Core",
+        "Warudo.Plugins.Core",
+        "Warudo.Editor",
+        "UnityEditor.UI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,16 @@
+using Warudo.Core.Attributes;
+using Warudo.Core.Graphs;
+using System;
+using Object = UnityEngine.Object;
+
+namespace Warudo.Plugins.Core.Nodes
+{
+    public class LiteralStringListNode : Node
+    {
+        public string[] Value;
+        public string[] Output()
+        {
+            throw new NotImplementedException();
+        }
+    }
+}
