@@ -1,4 +1,4 @@
-name: Build and Release on Tag
+name: Publish Meta UPM on Tag
 
 on:
   push:
@@ -7,18 +7,213 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
-  package:
-    runs-on: ubuntu-latest
+  publish-upm:
+    runs-on: windows-2022
 
     steps:
-      - name: Create Release on Tag
-        uses: actions/create-release@v1
+      - name: Checkout package repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: package-repo
+
+      - name: Checkout template Unity project
+        uses: actions/checkout@v4
+        with:
+          repository: HakuyaLabs/ModTools-TemplateProject
+          token: ${{ secrets.GH_PAT }}
+          path: template-project
+
+      - name: Inject CI.RefreshAssets into template project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $source = Join-Path $env:GITHUB_WORKSPACE "package-repo/.github/workflows/ci/RefreshAssets.cs"
+          $targetDir = Join-Path $env:GITHUB_WORKSPACE "template-project/Assets/Editor"
+          $target = Join-Path $targetDir "RefreshAssets.cs"
+
+          if (!(Test-Path $source)) {
+            throw "CI build method source file not found: $source"
+          }
+
+          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+          Copy-Item -LiteralPath $source -Destination $target -Force
+
+      - name: Ensure template project has required Unity package dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $manifestPath = Join-Path $env:GITHUB_WORKSPACE "template-project/Packages/manifest.json"
+          if (!(Test-Path $manifestPath)) {
+            throw "Template project manifest not found: $manifestPath"
+          }
+
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          if ($null -eq $manifest.dependencies) {
+            $manifest | Add-Member -NotePropertyName dependencies -NotePropertyValue ([ordered]@{})
+          }
+
+          $requiredDependencies = [ordered]@{
+            "com.unity.timeline" = "1.7.6"
+            "com.unity.textmeshpro" = "3.0.6"
+          }
+
+          foreach ($dependency in $requiredDependencies.GetEnumerator()) {
+            $manifest.dependencies | Add-Member -NotePropertyName $dependency.Key -NotePropertyValue $dependency.Value -Force
+          }
+
+          $manifest | ConvertTo-Json -Depth 100 | Set-Content $manifestPath -Encoding utf8
+
+      - name: Generate meta-preserving UPM tree with Unity
+        uses: game-ci/unity-builder@v4
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: template-project
+          unityVersion: auto
+          targetPlatform: StandaloneWindows64
+          buildMethod: CI.RefreshAssets.Run
+          customImage: unityci/editor:windows-2021.3.45f2-base-3.2.2
+          customParameters: -packageSource ../package-repo -publishRoot ../generated-upm
+          allowDirtyBuild: true
+
+      - name: Verify generated UPM output
+        shell: pwsh
+        run: |
+          if (!(Test-Path "generated-upm")) {
+            throw "Unity did not generate the generated-upm directory."
+          }
+
+          if (!(Test-Path "generated-upm/package.json")) {
+            throw "Generated UPM output is missing package.json."
+          }
+
+      - name: Publish generated UPM branch
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $packageRepo = Join-Path $env:GITHUB_WORKSPACE "package-repo"
+          $branchName = "upm/$env:TAG_NAME"
+          $publishSource = Join-Path $env:GITHUB_WORKSPACE "generated-upm"
+          $latestBranchName = "upm/latest"
+          $worktreeRoot = Join-Path $env:RUNNER_TEMP "upm-branches"
+
+          New-Item -ItemType Directory -Path $worktreeRoot -Force | Out-Null
+
+          function Publish-UpmBranch {
+            param(
+              [string]$TargetBranch,
+              [string]$CommitMessage
+            )
+
+            $safeBranchDirName = $TargetBranch -replace '[^a-zA-Z0-9._-]', '_'
+            $worktreePath = Join-Path $worktreeRoot $safeBranchDirName
+
+            if (Test-Path $worktreePath) {
+              Remove-Item -LiteralPath $worktreePath -Recurse -Force
+            }
+
+            $branchExists = $true
+            git ls-remote --exit-code --heads origin $TargetBranch *> $null
+            if ($LASTEXITCODE -ne 0) {
+              $branchExists = $false
+            }
+
+            if ($branchExists) {
+              git fetch origin $TargetBranch
+              git worktree add -b $TargetBranch $worktreePath "refs/remotes/origin/$TargetBranch"
+              Push-Location $worktreePath
+            }
+            else {
+              git worktree add --detach $worktreePath
+              Push-Location $worktreePath
+              git switch --orphan $TargetBranch
+            }
+
+            try {
+              Get-ChildItem -Force | Where-Object { $_.Name -ne ".git" } | Remove-Item -Recurse -Force
+
+              Copy-Item -Path (Join-Path $publishSource "*") -Destination . -Recurse -Force
+
+              git add --all
+
+              git diff --cached --quiet
+              if ($LASTEXITCODE -eq 0) {
+                Write-Host "No UPM changes detected for $TargetBranch."
+                return
+              }
+
+              git commit -m $CommitMessage
+              git push origin "HEAD:refs/heads/$TargetBranch"
+            }
+            finally {
+              Pop-Location
+            }
+          }
+
+          Push-Location $packageRepo
+          try {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            Publish-UpmBranch -TargetBranch $branchName -CommitMessage "Publish meta UPM for $env:TAG_NAME"
+            Publish-UpmBranch -TargetBranch $latestBranchName -CommitMessage "Publish meta UPM latest from $env:TAG_NAME"
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Pack generated UPM as tgz
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $publishSource = Join-Path $env:GITHUB_WORKSPACE "generated-upm"
+          $archiveName = "Warudo-Mod-Tool-$env:TAG_NAME.tgz"
+          $archivePath = Join-Path $env:GITHUB_WORKSPACE $archiveName
+
+          if (!(Test-Path $publishSource)) {
+            throw "Generated UPM output directory not found: $publishSource"
+          }
+
+          if (Test-Path $archivePath) {
+            Remove-Item -LiteralPath $archivePath -Force
+          }
+
+          tar -czf $archivePath -C $publishSource .
+
+          if (!(Test-Path $archivePath)) {
+            throw "Failed to create archive: $archivePath"
+          }
+
+          "ARCHIVE_PATH=$archivePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare release notes from commit message
+        shell: pwsh
+        working-directory: package-repo
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $notesPath = Join-Path $env:GITHUB_WORKSPACE "release-notes.md"
+          git log -1 --pretty=%B "$env:GITHUB_SHA" | Out-File -FilePath $notesPath -Encoding utf8
+
+          "RELEASE_NOTES_PATH=$notesPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Create GitHub release and upload tgz
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Warudo Mod Tool ${{ github.ref_name }}
-          draft: false
-          prerelease: false
+          name: Warudo Mod Tool ${{ github.ref_name }}
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
+          files: ${{ env.ARCHIVE_PATH }}
